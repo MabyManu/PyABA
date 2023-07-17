@@ -1,2 +1,2 @@
 # PyABA
-Python development for the Analysis of Brain Activity
+Python developer tools for the Analysis of Brain Activity

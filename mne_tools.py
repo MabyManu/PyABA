@@ -123,7 +123,7 @@ def PlotEvokedDeviationFrom0(X,evokeds,colors_config,styles_config,alpha):
 
 
     
-def SpatTemp_TFCE_plotCompare(X, colors_config, evokeds,p_accept,n_permutations):
+def SpatTemp_TFCE_plotCompare(X, colors_config, styles_config,evokeds,p_accept,n_permutations):
 	samplingFreq = evokeds[list(evokeds.keys())[0]].info['sfreq']
 	adjacency, ch_names = find_ch_adjacency(evokeds[list(evokeds.keys())[0]].info, ch_type='eeg')
 	
@@ -138,7 +138,7 @@ def SpatTemp_TFCE_plotCompare(X, colors_config, evokeds,p_accept,n_permutations)
 	significant_points = cluster_pv.reshape(t_obs.shape).T <= p_accept
 	print(str(significant_points.sum()) + " points selected by TFCE ...")
     
-	figtopocompare = plot_compare_evokeds(evokeds, picks='eeg', colors=colors_config,axes='topo',split_legend=False,legend="lower center")
+	figtopocompare = plot_compare_evokeds(evokeds, picks='eeg', colors=colors_config,styles = styles_config,axes='topo',split_legend=False,legend="lower center")
 	Nchans = t_obs.shape[1]
 	
 	for i_chan in range (Nchans):

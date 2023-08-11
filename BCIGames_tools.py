@@ -14,13 +14,18 @@ import sys
 sys.path.append(PyABA_path)
 import py_tools
 
-def ReadCalib_JsonFile_Mentalink4(JsonFileName):
+def ReadCalib_JsonFile_Mentalink4(JsonFileName,FlagEpochFlex=False):
+	Flag_ForcingChannelsName = False
 	with open(JsonFileName) as json_data:
 		print(type(json_data))
 		data_dict = json.load(json_data)
 		
 	Settings = data_dict['Setting']
 	SamplingFrequency = Settings['SampleRate']
+	
+	if (FlagEpochFlex & (SamplingFrequency == 128)):
+		Flag_ForcingChannelsName = True
+	
 	if 'FlashCount:' in Settings:
 		NumberOfRepetitions = int(Settings['FlashCount:'])
 	else:
@@ -29,15 +34,7 @@ def ReadCalib_JsonFile_Mentalink4(JsonFileName):
 	if 'NbSampleWin' in Settings:
 		NbSampleWin = Settings['NbSampleWin']
 		
-	NbChans = len(Settings['Electrodes'])
-	ChannelsName=[]
-	ch_types_Chan = []
-	for i_chan in range(NbChans):
-		ChannelsName.append(Settings['Electrodes'][i_chan]['name'])
-		if '_dir' in Settings['Electrodes'][i_chan]['name']:
-			ch_types_Chan.append('misc')
-		else:
-			ch_types_Chan.append('eeg')
+	
 
 		
 	
@@ -90,18 +87,47 @@ def ReadCalib_JsonFile_Mentalink4(JsonFileName):
 	
 	# EPOCHS 
 	Data_Target = data_dict['EEGRawData']['Target']
+	Data_NoTarget = data_dict['EEGRawData']['NonTarget']
+	
+	
+	if Flag_ForcingChannelsName:
+		NbChans = np.shape(Data_Target)[1]
+		ChannelsName = ["Timestamp","Counter","Interpolate","Cz","T7","FC1","FC5","F9","F3","F7","Fp1","Pz","C3","O1","P9","P3","P7","CP1","CP5","Fz","T8","FC2","FC6","F10","F4","F8","Fp2","Oz","C4","O2","P10","P4","P8","CP2","CP6", "HardwareMarker","Markers"]
+		ch_types_Chan = ['misc'] * 3 + ["eeg"] * (NbChans-5) + ['misc'] * 2
+	else:	
+		NbChans = len(Settings['Electrodes'])
+		ChannelsName=[]
+		ch_types_Chan = []
+		for i_chan in range(NbChans):
+			ChannelsName.append(Settings['Electrodes'][i_chan]['name'])
+			if '_dir' in Settings['Electrodes'][i_chan]['name']:
+				ch_types_Chan.append('misc')
+			else:
+				ch_types_Chan.append('eeg')
+	
+	
+	
+	
+	
+	
 	NbEpochs_Target = len(Data_Target)
 	Data_epo_Target = np.zeros((NbEpochs_Target,NbChans,NbSampleWin))
 	for i_epoch in range(NbEpochs_Target):
 		for j_chan in range(NbChans):
 			Data_epo_Target[i_epoch,j_chan,:] = Data_Target[i_epoch][j_chan]
 			
-	Data_NoTarget = data_dict['EEGRawData']['NonTarget']
 	NbEpochs_NoTarget = len(Data_NoTarget)
 	Data_epo_NoTarget = np.zeros((NbEpochs_NoTarget,NbChans,NbSampleWin))
 	for i_epoch in range(NbEpochs_NoTarget):
 		for j_chan in range(NbChans):
 			Data_epo_NoTarget[i_epoch,j_chan,:] = Data_NoTarget[i_epoch][j_chan]
+			
+			
+			
+			
+			
+			
+	
 			
 			
 	info = mne.create_info(ChannelsName, SamplingFrequency, ch_types=ch_types_Chan)
@@ -255,3 +281,9 @@ def ReadTest_JsonFile_Mentalink4(JsonFileName):
 	Epochs_NoTarget.set_montage(ten_twenty_montage)
 	
 	return Epochs_Target,Epochs_NoTarget,NumberOfRepetitions,NbItems,NbTurns
+
+
+
+#{"name": "Cz"}, {"name": "T7"}, {"name": "FC1"}, {"name": "FC5"}, {"name": "F9"}, {"name": "F3"}, {"name": "F7"}, {"name": "Fp1"}, {"name": "Pz"}, {"name": "C3"}, {"name": "O1"}, {"name": "P9"}, {"name": "P3"}, {"name": "P7"}, {"name": "CP1"}, {"name": "CP5"}, {"name": "Fz"}, {"name": "T8"}, {"name": "FC2"}, {"name": "FC6"}, {"name": "F10"}, {"name": "F4"}, {"name": "F8"}, {"name": "Fp2"}, {"name": "Oz"}, {"name": "C4"}, {"name": "O2"}, {"name": "P10"}, {"name": "P4"}, {"name": "P8"}, {"name": "CP2"}, {"name": "CP6"}
+
+

@@ -8,8 +8,12 @@ Created on Tue Mar 30 11:40:18 2021
 import numpy as np
 import mne
 from scipy.linalg import toeplitz, qr, inv, det, svd
+from pyriemann.utils.base import expm, invsqrtm, logm, sqrtm
+from pyriemann.utils.covariance import covariances_EP
+from pyriemann.utils.mean import mean_riemann
 
 import pyABA_algorithms, py_tools,mne_tools
+from scipy.linalg import eigvalsh
 
 #_______________________________________________________________________________
 def Xdawn(raw, events_id, tmin_time_window_s, tmax_time_window_s, nb_spatial_filters):
@@ -325,5 +329,278 @@ def Ave_Epochs_FeatComp(epochs,SpatialFiler,TabNbStimPerBlock,rejection_rate):
 
 
 
+def matCov(MatEpoch, ERP_Template_Target):
+    All_MatCov = []
+    # Concatenate each epoch with mean of targets epochs
+    for i, epoch in enumerate(MatEpoch):
+        # MATRICE DE COV
+        MatCov = covariances_EP(epoch, ERP_Template_Target)
 
+        # Rempli deux listes avec les matrices
+        All_MatCov.append(MatCov)
+
+    # Convert la liste en matrice
+    MatCovAll = np.array(All_MatCov)
+    return MatCovAll
+
+
+#_______________________________________________________________________________
+
+# def covariances_EP(X, P):
+#     Ne, Ns = X.shape
+#     Np, Ns = P.shape
+
+#     covmats = np.cov(np.concatenate((X, P), axis=0))
+#     return covmats
+	
+#_______________________________________________________________________________
+def predict_R_TNT(X, mu_MatCov_T,mu_MatCov_NT):
+    """
+    Predict the r_TNT for a new set of trials.
+    """
+    
+    dist_0 = distance_riemann(X, mu_MatCov_T)
+    dist_1 = distance_riemann(X, mu_MatCov_NT)
+    
+     
+
+    
+    r_TNT = np.log(dist_0 / dist_1)
+    
+    return r_TNT
+
+#_______________________________________________________________________________
+def compute_rTNT(MatCov_Trial, mean_MatCov_Target, mean_MatCov_NoTarget):
+    All_rTNT = []
+    for i, epoch in enumerate(MatCov_Trial):
+        # dT = distance_riemann(epoch, mean_MatCov_Target)
+        # dNT = distance_riemann(epoch, mean_MatCov_NoTarget)
+        # All_rTNT.append(np.log(dT/dNT))
+        All_rTNT.append(predict_R_TNT(epoch, mean_MatCov_Target,mean_MatCov_NoTarget))
+
+    All_rTNT = np.array(All_rTNT)
+
+    # MOYENNES des rTNT
+    Mu_rTNT = np.mean(All_rTNT)
+
+    # Variance des rTNT
+    Var_rTNT = np.var(All_rTNT)
+
+    return Mu_rTNT, Var_rTNT, All_rTNT
+
+
+#_______________________________________________________________________________
+			
+
+
+	
+#_______________________________________________________________________________
+def distance_riemann(A, B):
+    """Riemannian distance between two covariance matrices A and B.
+    .. math::
+    d = {\left( \sum_i \log(\lambda_i)^2 \\right)}^{-1/2}
+		
+    where :math:`\lambda_i` are the joint eigenvalues of A and B
+		
+    :param A: First covariance matrix
+    :param B: Second covariance matrix
+    :returns: Riemannian distance between A and B
+		
+    """
+    l_logsquare = np.sum(np.log(eigvalsh(A, B))**2)
+
+    return np.sqrt(l_logsquare)
+    
+		
+		
+#_______________________________________________________________________________
+def compute_likelihood( l_r_TNT,  l_mu_TNT_T, l_mu_TNT_NT, l_sigma_TNT_T, l_sigma_TNT_NT):
+		# 0 is target, 1 is nontarget
+		
+    Vec0 = (l_r_TNT - l_mu_TNT_T) ** 2
+    Vec0 = Vec0 / l_sigma_TNT_T
+		
+    Vec1 = (l_r_TNT - l_mu_TNT_NT) ** 2
+    Vec1 = Vec1 / l_sigma_TNT_NT
+		
+		
+    ld0 = np.log( 2 *np. pi *l_sigma_TNT_T)
+    ld1 = np.log(2 * np.pi * l_sigma_TNT_NT)
+		
+		
+    lf0 = - 0.5 * (Vec0 + ld0)
+    lf1 = - 0.5 * (Vec1 + ld1)
+		
+
+    return np.array([lf0 , lf1])               
+                
+
+
+#_______________________________________________________________________________
+def ComputePostProba_BayesInference(Likelihood,NbItems,NbFlashs,PaternsItemsFlashed):
+    """
+    Compute posterior probabilities for a item to be the target
+
+    %% ATTENTION
+    % class 1: non-targets
+    % class 2: targets
+    """
+    
+    items_bayes_priors_array = np.ones(NbItems) / NbItems
+    flashed_item_posteriors_array = np.zeros(NbItems)
+    
+    for i_flashs in range(NbFlashs):
+        PaternsItemsFlashed_Curr = PaternsItemsFlashed[i_flashs]
+        Likelihood_Curr = Likelihood[i_flashs]
+        for j_items in range(NbItems):
+            if np.isin((j_items+1),PaternsItemsFlashed_Curr):
+                flashed_item_posteriors_array[j_items] = Likelihood_Curr[0] - Likelihood_Curr[1] + np.log(items_bayes_priors_array[j_items])
+                # flashed_item_posteriors_array[j_items] = Likelihood_Curr[0] + np.log(items_bayes_priors_array[j_items])
+            else:
+                flashed_item_posteriors_array[j_items] = np.log(items_bayes_priors_array[j_items])
+                # flashed_item_posteriors_array[j_items] = Likelihood_Curr[1] + np.log(items_bayes_priors_array[j_items])
+
+  
+        #normalize posteriors array
+        max_flashed_item_posteriors_array = flashed_item_posteriors_array.max()
+        flashed_item_posteriors_array = flashed_item_posteriors_array - max_flashed_item_posteriors_array + 1
+        exp_flashed_item_posteriors_array = np.exp(flashed_item_posteriors_array)
+        posteriors = np.divide(exp_flashed_item_posteriors_array, exp_flashed_item_posteriors_array.sum())
+        items_bayes_priors_array = posteriors
+        # print('post vector', posteriors)
+
+    return posteriors
+################################################################################                
+
+
+def riemann_template_learn(EpochsTargets, EpochsNoTargets, rejection_rate, Gain):
+    """This function is generating a riemann template.
+
+    It take one .vhdr path in argument and return
+    a dict containing all calibration data.
+
+    Riemann template is use to calibrate the MYB game.
+
+    :param EpochsTargets: Targets Epochs for Calibration.
+    :type  EpochsTargets: mne epochs object
+    
+    :param EpochsNoTargets: No Targets Epochs for Calibration.
+    :type  EpochsNoTargets: mne epochs object
+    
+    :param rejection_rate: Determined the rate of epochs rejection. 
+    :type rejection_rate: float
+    
+
+    """
+    Epo_Targ = EpochsTargets.copy()
+    _,_,_,ixEpochs2Remove,_ = mne_tools.RejectThresh(Epo_Targ,rejection_rate*100)
+     # removing epochs and events to get thresholded data
+    Epo_Targ.drop(ixEpochs2Remove,verbose=False)
+    
+    Epo_NoTarg = EpochsNoTargets.copy()    
+    _,_,_,ixEpochs2Remove,_ = mne_tools.RejectThresh(Epo_NoTarg,rejection_rate*100)
+     # removing epochs and events to get thresholded data
+    Epo_NoTarg.drop(ixEpochs2Remove,verbose=False)
+    
+    
+    epochs_T  = Epo_Targ.get_data()*Gain
+    epochs_NT = Epo_NoTarg.get_data()*Gain
+    ERP_Template_Target = np.mean(epochs_T, axis=0)
+    ERP_Template_NoTarget = np.mean(epochs_NT, axis=0)
+
+    varERP_Template_Target = np.var(epochs_T, axis=0)
+    varERP_Template_NoTarget = np.var(epochs_NT, axis=0)
+    
+    matCov_TrialTarget = covariances_EP(epochs_T, ERP_Template_Target, 'oas')
+    matCov_TrialNoTarget = covariances_EP(epochs_NT, ERP_Template_Target, 'oas')
+
+    # matCov_TrialTarget = tools_Riemann.matCov(epochs_T, ERP_Template_Target)
+    # matCov_TrialNoTarget = tools_Riemann.matCov(epochs_NT, ERP_Template_Target)
+
+    matCov_TrialTarget = np.array(matCov_TrialTarget)
+    matCov_TrialNoTarget = np.array(matCov_TrialNoTarget)
+   
+    # TODO check `logm` stability
+    
+   
+    
+    mean_MatCov_Target = mean_riemann(matCov_TrialTarget)
+    
+    mean_MatCov_NoTarget = mean_riemann(matCov_TrialNoTarget)
+    
+    
+
+
+    mu_rTNT_TrialTarget,  var_rTNT_TtrialTarget, all_rTNT_TrialTarget = compute_rTNT(matCov_TrialTarget, mean_MatCov_Target, mean_MatCov_NoTarget)
+    mu_rTNT_TrialNoTarget, Var_rTNT_TrialNoTarget, all_rTNT_TrialNoTarget = compute_rTNT(matCov_TrialNoTarget, mean_MatCov_Target, mean_MatCov_NoTarget)
+
+    NbGoodTarget = float(np.sum(all_rTNT_TrialTarget < .0))
+    NbGoodNoTarget = float(np.sum(all_rTNT_TrialNoTarget > .0))
+    NbTotTrials = float(all_rTNT_TrialTarget.shape[0] + all_rTNT_TrialNoTarget.shape[0])
+
+    accP300 = np.float64((NbGoodTarget)*100 / len(all_rTNT_TrialTarget))
+
+    riemann_template = {}
+    riemann_template['mu_Epoch_T'] = ERP_Template_Target
+    riemann_template['mu_Epoch_NT'] = ERP_Template_NoTarget
+    riemann_template['var_Epoch_T'] = varERP_Template_Target
+    riemann_template['var_Epoch_NT'] = varERP_Template_NoTarget
+    riemann_template['mu_MatCov_T'] = mean_MatCov_Target
+    riemann_template['mu_MatCov_NT'] = mean_MatCov_NoTarget
+    riemann_template['mu_rTNT_T'] = mu_rTNT_TrialTarget
+    riemann_template['mu_rTNT_NT'] = mu_rTNT_TrialNoTarget
+    riemann_template['sigma_rTNT_T'] = var_rTNT_TtrialTarget
+    riemann_template['sigma_rTNT_NT'] = Var_rTNT_TrialNoTarget
+    riemann_template['accP300'] = accP300
+
+    return riemann_template
+
+
+
+
+
+
+def riemannOneBlockApply(riemann_template,Epoch_Test,Gain):
+     
+    # Extract Riamman Template settings
+    ERP_Template_Target = riemann_template['mu_Epoch_T'][...]
+    MatCov_T            = riemann_template['mu_MatCov_T'][...]
+    MatCov_NT           = riemann_template['mu_MatCov_NT'][...]
+    mu_rTNT_T           = riemann_template['mu_rTNT_T']
+    mu_rTNT_NT          = riemann_template['mu_rTNT_NT']
+    sigma_rTNT_T        = riemann_template['sigma_rTNT_T']
+    sigma_rTNT_NT       = riemann_template['sigma_rTNT_NT']
+    
+       
+    l_nbFlashsPerBlock = len(Epoch_Test)
+    epo_tmp = Epoch_Test.copy()
+    LabelEvt = epo_tmp.events[:,2]
+    ColTarget = np.unique(LabelEvt[ np.where(LabelEvt>10)] - 10)[0]
+    LabelEvt[ np.where(LabelEvt>10)] = LabelEvt[ np.where(LabelEvt>10)] - 10
+    Curr_LikelihoodFunction =np.zeros((l_nbFlashsPerBlock,2))
+    R_TNT_tot =np.zeros(l_nbFlashsPerBlock)
+
+    v_NbItemsPerPart = len(np.unique(LabelEvt))
+    SingleTrial_curr = np.zeros((1,Epoch_Test.get_data().shape[1],Epoch_Test.get_data().shape[2]))
+    for j_flashs in range(l_nbFlashsPerBlock):
+        SingleTrial_curr[0,:,:] = Epoch_Test.get_data()[j_flashs,:,:]*Gain
+        # Curr_Cov = tools_Riemann.covariances_EP(SingleTrial_curr, ERP_Template_Target)
+        Curr_Cov = np.squeeze(covariances_EP(SingleTrial_curr, ERP_Template_Target, estimator='oas'))
+        Curr_r_TNT = np.squeeze(predict_R_TNT(Curr_Cov, MatCov_T,MatCov_NT))
+        R_TNT_tot[j_flashs]=Curr_r_TNT
+        if hasattr(mu_rTNT_T, "__len__"):
+            Curr_LikelihoodFunction[j_flashs,:] = compute_likelihood(Curr_r_TNT, mu_rTNT_T[0], mu_rTNT_NT[0],sigma_rTNT_T[0],sigma_rTNT_NT[0])
+        else:
+            Curr_LikelihoodFunction[j_flashs,:] = compute_likelihood(Curr_r_TNT, mu_rTNT_T, mu_rTNT_NT,sigma_rTNT_T,sigma_rTNT_NT)
+
+    NbGoodTarget = float(np.sum((R_TNT_tot < .0) * Epoch_Test.events[:,2]>10))
+    NbGoodNoTarget = float(np.sum((R_TNT_tot > .0) * Epoch_Test.events[:,2]<10))
+    NbTotTrials = len(R_TNT_tot)
+
+    accP300 = np.float64((NbGoodTarget)*100 / np.sum(Epoch_Test.events[:,2]>10))
+    
+    BoolGoodSelect = (np.argmax(ComputePostProba_BayesInference(Curr_LikelihoodFunction, v_NbItemsPerPart, l_nbFlashsPerBlock, LabelEvt))+1) == ColTarget
+    ItemSelected = (np.argmax(ComputePostProba_BayesInference(Curr_LikelihoodFunction, v_NbItemsPerPart, l_nbFlashsPerBlock, LabelEvt))+1)
+     
+    return BoolGoodSelect,accP300,ItemSelected,ColTarget
 

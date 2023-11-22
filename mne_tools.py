@@ -24,6 +24,38 @@ import matplotlib.pyplot as plt
 import py_tools
 
 
+
+def ChangeMontage_epochs(Epochs_orig,NewSetElectrodes):
+	
+	Nsamples = len(Epochs_orig.times)
+	Ntrials = len(Epochs_orig)
+	NChan_Orig = Epochs_orig.info['nchan']
+	ListChannels_orig = Epochs_orig.info['ch_names']
+	
+	NewChan2add = [x for x in NewSetElectrodes if not(x in ListChannels_orig)]
+	NbNewChan2add = len(NewChan2add)
+	NewData2add = np.random.randn(Ntrials, NbNewChan2add,Nsamples)*1e-6
+	
+	infoAddChan = mne.create_info(NewChan2add, Epochs_orig.info['sfreq'], NbNewChan2add*['eeg'])
+	NewEpochArray  = mne.EpochsArray(NewData2add, infoAddChan)
+	NewEpochArray.set_montage(mne.channels.make_standard_montage('standard_1020'))
+	
+	Epochs_curr = Epochs_orig.copy()
+	Epochs_curr.add_channels([NewEpochArray], force_update_info=True)
+	Epochs_curr.info['bads'] = NewChan2add
+	Epochs_curr.interpolate_bads(reset_bads=False)
+	Epochs_curr.info['bads'] = []
+	
+	
+	NewEpoch = Epochs_curr.copy()
+	OldChan2drop = [x for x in ListChannels_orig if not(x in NewSetElectrodes )]
+	NewEpoch.drop_channels(OldChan2drop)
+	NewEpoch.reorder_channels(NewSetElectrodes)
+	
+	return NewEpoch
+
+
+
 def RejectThresh(epochs,PercentageOfEpochsRejected):
     epochs.drop_bad()
     NbEpoch2Keep = np.fix(epochs.__len__() * (1.0-(PercentageOfEpochsRejected/100)))-1

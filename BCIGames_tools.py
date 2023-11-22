@@ -42,6 +42,17 @@ def ReadCalib_JsonFile_Mentalink4(JsonFileName,FlagEpochFlex=False):
 	if 'SequenceList' in data_dict:
 		i_Flash = 0
 		Seqlist = data_dict["SequenceList"]["Values"][0]
+		
+		if 'Tile' in (Seqlist[0]['StimulationList'][0]['StimulusNameList'][0]):
+			Game = 'Battleship'
+		else:
+			Game = 'Connect4'
+			
+		
+			
+			
+		
+		
 		NbItems = len(Seqlist[0]['StimulationList'])
 		NbSeq = len(Seqlist)
 		MatEvt = np.zeros((NbItems*NbSeq,3),dtype=int)
@@ -172,6 +183,8 @@ def ReadTest_JsonFile_Mentalink4(JsonFileName):
 		print(type(json_data))
 		data_dict = json.load(json_data)
 		
+	EEG_item_Results = data_dict['EEGFocus']
+		
 	Settings = data_dict['Setting']
 	SamplingFrequency = Settings['SampleRate']
 	if 'FlashCount:' in Settings:
@@ -197,40 +210,84 @@ def ReadTest_JsonFile_Mentalink4(JsonFileName):
 		
 	# EVENT
 	Gaze = data_dict['EyeFocus']['Values']
-	FlashSequence = data_dict['StimulusSequence']['Values']
-	NbTurns = len(FlashSequence)
-	NbItems = len(data_dict['Visibility']["Values"][0])
-
-	NbTotFlashs = NbTurns*NumberOfRepetitions*NbItems
+	if 'SequenceList' in data_dict:
+		i_Flash = 0
+		Seqlist = data_dict["SequenceList"]["Values"]
 	
-	MatEvt = np.zeros((NbTotFlashs,3),dtype=int)
-	IsTarget = np.zeros((NbTotFlashs),dtype=bool)
-	i_f = 0
-	for i_turn in range(NbTurns):
-		Flash_Seq_Turncurr=FlashSequence[i_turn]['FlashList']
-		Gaze_Seq_Turncurr=Gaze[i_turn]
-		
-		
-		if (np.argmax(list(Gaze_Seq_Turncurr.values())) + 1>NbItems):
-			Gaze_Seq_Turncurr_b = Gaze_Seq_Turncurr
-			Gaze_Seq_Turncurr = {}
-			for key, value in Gaze_Seq_Turncurr_b.items():
-				if key.startswith("Column"):
-					Gaze_Seq_Turncurr[key] = Gaze_Seq_Turncurr_b[key]			
-		
-		Target_curr =np.argmax(list(Gaze_Seq_Turncurr.values())) + 1
+		NbItems = len(Seqlist[0][0]['StimulationList'])
+		NbTurns = len(Seqlist)
+		NbTotFlashs = NbTurns*NumberOfRepetitions*NbItems
 
-		for i_flash in range(len(Flash_Seq_Turncurr)):
-			pos_tmp = Flash_Seq_Turncurr[i_flash]['PosXTime']
-			numcol = int(Flash_Seq_Turncurr[i_flash]['Name'][int(np.fix(float(Flash_Seq_Turncurr[i_flash]['Name'].find("Column"))))+6:])
-			Target = (numcol == Target_curr)
-			if (i_f==0):
-				 PosixT0 = pos_tmp
-			latency = pos_tmp - PosixT0
-			MatEvt[i_f,0] = latency
-			MatEvt[i_f,2] = numcol + Target * 10
-			IsTarget[i_f] = Target
-			i_f = i_f + 1
+		MatEvt = np.zeros((NbTotFlashs,3),dtype=int)
+		IsTarget = np.zeros((NbTotFlashs),dtype=bool)
+
+	
+		for i_seq in range(NbTurns):
+			Gaze_Seq_Turncurr=Gaze[i_seq]
+			if (np.argmax(list(Gaze_Seq_Turncurr.values())) + 1>NbItems):
+				Gaze_Seq_Turncurr_b = Gaze_Seq_Turncurr
+				Gaze_Seq_Turncurr = {}
+				for key, value in Gaze_Seq_Turncurr_b.items():
+					if key.startswith("Column"):
+						Gaze_Seq_Turncurr[key] = Gaze_Seq_Turncurr_b[key]			
+			
+			Target_curr =np.argmax(list(Gaze_Seq_Turncurr.values())) + 1
+			
+			Seq_curr = Seqlist[i_seq]
+			for i_rep in range(NumberOfRepetitions):
+				Stim_Rep = Seq_curr[i_rep]
+				for i_item in range(NbItems):
+					pos_tmp = Stim_Rep["StimulationList"][i_item]["PosXTime"]
+					NameStim =  Stim_Rep["StimulationList"][i_item]["StimulusNameList"][0]
+					if "Stimulus (" in NameStim:
+						numcol = int(NameStim[10:NameStim.find(")")]) + 1
+					else:
+						numcol = int(NameStim[int(np.fix(float(NameStim.find("Column"))))+6:])
+					Target = (numcol == Target_curr)
+					if (i_Flash==0):
+						PosixT0 = pos_tmp
+					latency = pos_tmp - PosixT0
+					MatEvt[i_Flash,0] = latency
+					MatEvt[i_Flash,2] = numcol + Target * 10
+					IsTarget[i_Flash] = Target
+					i_Flash = i_Flash + 1
+				
+				
+	if 'StimulusSequence' in data_dict:
+		FlashSequence = data_dict['StimulusSequence']['Values']
+		NbTurns = len(FlashSequence)
+		NbItems = len(data_dict['Visibility']["Values"][0])
+	
+		NbTotFlashs = NbTurns*NumberOfRepetitions*NbItems
+		
+		MatEvt = np.zeros((NbTotFlashs,3),dtype=int)
+		IsTarget = np.zeros((NbTotFlashs),dtype=bool)
+		i_f = 0
+		for i_turn in range(NbTurns):
+			Flash_Seq_Turncurr=FlashSequence[i_turn]['FlashList']
+			Gaze_Seq_Turncurr=Gaze[i_turn]
+			
+			
+			if (np.argmax(list(Gaze_Seq_Turncurr.values())) + 1>NbItems):
+				Gaze_Seq_Turncurr_b = Gaze_Seq_Turncurr
+				Gaze_Seq_Turncurr = {}
+				for key, value in Gaze_Seq_Turncurr_b.items():
+					if key.startswith("Column"):
+						Gaze_Seq_Turncurr[key] = Gaze_Seq_Turncurr_b[key]			
+			
+			Target_curr =np.argmax(list(Gaze_Seq_Turncurr.values())) + 1
+	
+			for i_flash in range(len(Flash_Seq_Turncurr)):
+				pos_tmp = Flash_Seq_Turncurr[i_flash]['PosXTime']
+				numcol = int(Flash_Seq_Turncurr[i_flash]['Name'][int(np.fix(float(Flash_Seq_Turncurr[i_flash]['Name'].find("Column"))))+6:])
+				Target = (numcol == Target_curr)
+				if (i_f==0):
+					 PosixT0 = pos_tmp
+				latency = pos_tmp - PosixT0
+				MatEvt[i_f,0] = latency
+				MatEvt[i_f,2] = numcol + Target * 10
+				IsTarget[i_f] = Target
+				i_f = i_f + 1
 	
 	# EPOCHS
 	DataEpoch = data_dict['EEGRawData']['Test']
@@ -280,7 +337,7 @@ def ReadTest_JsonFile_Mentalink4(JsonFileName):
 	Epochs_NoTarget=mne.EpochsArray(Data_epo_NoTarget*1e-6,info=info,events = MatEvt_NoTarget, event_id=event_id)
 	Epochs_NoTarget.set_montage(ten_twenty_montage)
 	
-	return Epochs_Target,Epochs_NoTarget,NumberOfRepetitions,NbItems,NbTurns
+	return Epochs_Target,Epochs_NoTarget,NumberOfRepetitions,NbItems,NbTurns,EEG_item_Results
 
 
 

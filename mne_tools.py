@@ -76,6 +76,21 @@ def RejectThresh(epochs,PercentageOfEpochsRejected):
 
 
 def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accept,n_permutations):
+	# Compute comparison between  2 conditions for each channel
+	# Display results with topographical way
+	#
+	# USAGE for one subject: 
+	# X = [Epochs_Condition1.get_data().transpose(0, 2, 1), Epochs_Condition2.get_data().transpose(0, 2, 1)]
+	# colors_config = {"Condition1": "magenta", "Condition2": 'steelblue'}
+	# styles_config ={"Condition1": {"linewidth": 2.75},"Condition2": {"linewidth": 2.75}}
+	# Evoked_Condition1   = Epochs_Condition1.average()
+	# Evoked_Condition2   = Epochs_Condition2.average()
+	# evokeds = {'Condition1':Evoked_Condition1,'Condition2':Evoked_Condition2}
+	# p_accept = 0.05
+	# n_permutations = 2000
+	# fig = mne_tools.PermutCluster_plotCompare(X, colors_config, styles_config, evokeds,p_accept,n_permutations)
+	
+	
     n_conditions = 2
     n_replications = (X[0].shape[0])  // n_conditions
     factor_levels = [2]      #[2, 2]  # number of levels in each factor
@@ -156,12 +171,24 @@ def PlotEvokedDeviationFrom0(X,evokeds,colors_config,styles_config,alpha):
 
     
 def SpatTemp_TFCE_plotCompare(X, colors_config, styles_config,evokeds,p_accept,n_permutations):
+	# Compute Non-parametric cluster-level test for spatio-temporal data between  2 conditions
+	# Display results with topographical way
+	#
+	# USAGE for one subject: 
+	# X = [Epochs_Condition1.get_data().transpose(0, 2, 1), Epochs_Condition2.get_data().transpose(0, 2, 1)]
+	# colors_config = {"Condition1": "magenta", "Condition2": 'steelblue'}
+	# styles_config ={"Condition1": {"linewidth": 2.75},"Condition2": {"linewidth": 2.75}}
+	# Evoked_Condition1   = Epochs_Condition1.average()
+	# Evoked_Condition2   = Epochs_Condition2.average()
+	# evokeds = {'Condition1':Evoked_Condition1,'Condition2':Evoked_Condition2}
+	# p_accept = 0.05
+	# n_permutations = 2000
+	# fig = mne_tools.SpatTemp_TFCE_plotCompare(X, colors_config, styles_config, evokeds,p_accept,n_permutations)
+	
+	
 	samplingFreq = evokeds[list(evokeds.keys())[0]].info['sfreq']
 	adjacency, ch_names = find_ch_adjacency(evokeds[list(evokeds.keys())[0]].info, ch_type='eeg')
-	
-	# Extract data: transpose because the cluster test requires channels to be last
-	# In this case, inference is done over items. In the same manner, we could
-	# also conduct the test over, e.g., subjects.
+
 	
 	tfce = dict(start=1, step=2)
 	

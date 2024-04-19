@@ -20,11 +20,11 @@ from mne.viz import plot_topomap
 from mne.stats import permutation_t_test,f_threshold_mway_rm
 
 import matplotlib.pyplot as plt
-
+from matplotlib.patches import Polygon
 import py_tools
 
-
-
+from mne.viz import iter_topography
+import matplotlib.transforms as mtransforms
 def ChangeMontage_epochs(Epochs_orig,NewSetElectrodes):
 	
 	Nsamples = len(Epochs_orig.times)
@@ -59,7 +59,7 @@ def ChangeMontage_epochs(Epochs_orig,NewSetElectrodes):
 def RejectThresh(epochs,PercentageOfEpochsRejected):
     epochs.drop_bad()
     NbEpoch2Keep = np.fix(epochs.__len__() * (1.0-(PercentageOfEpochsRejected/100)))-1
-    Mat_epoch =  epochs.get_data()
+    Mat_epoch =  epochs.get_data(copy=True)
     MinWOI = Mat_epoch.min(axis=2)
     MaxWOI = Mat_epoch.max(axis=2)
     Peak2Peak = MaxWOI-MinWOI
@@ -75,7 +75,7 @@ def RejectThresh(epochs,PercentageOfEpochsRejected):
 
 
 
-def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accept,n_permutations):
+def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accept,n_permutations,Title):
 	# Compute comparison between  2 conditions for each channel
 	# Display results with topographical way
 	#
@@ -90,44 +90,75 @@ def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accep
 	# n_permutations = 2000
 	# fig = mne_tools.PermutCluster_plotCompare(X, colors_config, styles_config, evokeds,p_accept,n_permutations)
 	
+	n_conditions = 2
+	n_replications = (X[0].shape[0])  // n_conditions
+	factor_levels = [2]      #[2, 2]  # number of levels in each factor
+	effects = 'A'  # this is the default signature for computing all effects
+	# Other possible options are 'A' or 'B' for the corresponding main effects
+	# or 'A:B' for the interaction effect only
+	pthresh = 0.05  # set threshold rather high to save some time
+	f_thresh = f_threshold_mway_rm(n_replications,factor_levels,effects,pthresh)
+	del n_conditions, n_replications, factor_levels, effects, pthresh
+	tail = 1  # f-test, so tail > 0
+	threshold = f_thresh
+	Nchans = X[0].shape[2]
+	n_tests,n_samples,_ = X[0].shape
+	Times = evokeds[list(evokeds.keys())[0]].times
+	Info_ev = evokeds[list(evokeds.keys())[0]].info
+	AmpMaxCond1 = np.max((np.max(evokeds[list(evokeds.keys())[0]].get_data()),np.abs(np.min(evokeds[list(evokeds.keys())[0]].get_data()))))
+	AmpMaxCond2 = np.max((np.max(evokeds[list(evokeds.keys())[1]].get_data()),np.abs(np.min(evokeds[list(evokeds.keys())[1]].get_data()))))
+
 	
-    n_conditions = 2
-    n_replications = (X[0].shape[0])  // n_conditions
-    factor_levels = [2]      #[2, 2]  # number of levels in each factor
-    effects = 'A'  # this is the default signature for computing all effects
-    # Other possible options are 'A' or 'B' for the corresponding main effects
-    # or 'A:B' for the interaction effect only
-        
-    pthresh = 0.05  # set threshold rather high to save some time
-    f_thresh = f_threshold_mway_rm(n_replications,
-                                       factor_levels,
-                                       effects,
-                                       pthresh)
-    del n_conditions, n_replications, factor_levels, effects, pthresh
-        
-    tail = 1  # f-test, so tail > 0
-    
-    threshold = f_thresh
-    Nchans = X[0].shape[2]
-    n_tests,n_samples,_ = X[0].shape
-    Times = evokeds[list(evokeds.keys())[0]].times
-  
-    figtopocompare = plot_compare_evokeds(evokeds, picks='eeg', colors=colors_config,styles = styles_config, axes='topo',invert_y=True,split_legend=False,legend="lower center")
-   
-    for i_chan in range (Nchans):
-        T_obs, clusters, cluster_p_values, H0 = permutation_cluster_test([X[0][:,:,i_chan], X[1][:,:,i_chan]], n_permutations=n_permutations,
-                             threshold=threshold, tail=tail, n_jobs=3,
-                             out_type='mask')
-        
-        for i_cluster in range(len(cluster_p_values)):
-            if (cluster_p_values[i_cluster]<p_accept):
-                Clust_curr = clusters[i_cluster][0]
-                figtopocompare[0].get_axes()[i_chan].axvspan(Times[Clust_curr.start], Times[Clust_curr.stop-1],facecolor="crimson",alpha=0.3)
-                
+	AmpMax = np.max((AmpMaxCond1,AmpMaxCond2))	
+	Label1 = list(colors_config.items())[0][0]
+	Color1 = list(colors_config.items())[0][1]
+	Linewidth1 = list(styles_config[Label1].items())[0][1]
+	Label2 = list(colors_config.items())[1][0]
+	Color2 = list(colors_config.items())[1][1]
+	Linewidth2 = list(styles_config[Label2].items())[0][1]	
+	
 
-    figtopocompare[0].set_size_inches(8, 8)
-    
-    return figtopocompare
+	figtopocompare = plt.figure()
+
+	for ax, idx in iter_topography(Info_ev,fig_facecolor="white",axis_facecolor="white",axis_spinecolor="white",layout_scale=1,fig=figtopocompare):
+		
+		l, b, w, h = ax.get_position().bounds
+		newpos = [l, b-0.15, w, h]
+		ax.set_position(pos=newpos,which='both')
+		
+		ax.plot(Times,evokeds[list(evokeds.keys())[0]].get_data()[idx,:],color=Color1,linewidth = Linewidth1,label=Label1)
+		ax.plot(Times,evokeds[list(evokeds.keys())[1]].get_data()[idx,:],color=Color2,linewidth = Linewidth2,label=Label2)
+		ax.set_title(Info_ev['ch_names'][idx],loc='left',fontdict={'fontsize':10})
+		ax.axvline(x=0,linestyle=':',color='k')
+		ax.axhline(y=0,color='k')
+		ax.set_ylim(-AmpMax,AmpMax)
+		ax.invert_yaxis()
+		
+		
+		T_obs, clusters, cluster_p_values, H0 = permutation_cluster_test([X[0][:,:,idx], X[1][:,:,idx]], n_permutations=n_permutations,threshold=threshold, tail=tail, n_jobs=3,out_type='mask',verbose='ERROR')
+		
+		for i_cluster in range(len(cluster_p_values)):
+			if (cluster_p_values[i_cluster]<p_accept):
+				Clust_curr = clusters[i_cluster][0]
+				ax.axvspan(Times[Clust_curr.start], Times[Clust_curr.stop-1],facecolor="crimson",alpha=0.3)
+				
+		if (idx == Info_ev['nchan']-1):
+			ax.legend(loc=(1,0))
+			
+	legendax = figtopocompare.add_axes([0.97-w,0.05,w,h]) 
+	legendax.set_xlabel('Time (s)',fontsize=10,labelpad=0)
+	legendax.set_ylabel('µV',fontsize=10,labelpad=0)
+
+	legendax.set_yticks([-AmpMax*1e6,AmpMax*1e6])
+	legendax.set_yticklabels(np.round([-AmpMax*1e6,AmpMax*1e6],1), fontsize=10)
+	legendax.set_xticks(np.arange(Times[0],Times[-1],0.4))
+	legendax.set_xticklabels(np.round(np.arange(Times[0],Times[-1],0.4),1), fontsize=10)
+	legendax.invert_yaxis()
+
+	plt.gcf().suptitle(Title)
+	plt.show()
+	
+	return figtopocompare
 
 
 
@@ -135,38 +166,61 @@ def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accep
 
 
 
+def PlotEvokedDeviationFrom0(X,evokeds,colors_config,styles_config,alpha,Title):
+	Label,color = list(colors_config.items())[0]
+	_,linewidth = list(styles_config[Label].items())[0]
+	Times = evokeds.times
+	AmpMax = np.max((np.max(evokeds.get_data()),np.abs(np.min(evokeds.get_data()))))
+
+	figtopo = plt.figure()
+
+	for ax, idx in iter_topography(evokeds.info,fig_facecolor="white",axis_facecolor="white",axis_spinecolor="white",layout_scale=1.0,fig=figtopo):
+		
+		l, b, w, h = ax.get_position().bounds
+		newpos = [l, b-0.15, w, h]
+		ax.set_position(pos=newpos,which='both')
+		
+		ax.plot(evokeds.times,evokeds.get_data()[idx,:],color=color,linewidth = linewidth,label=Label)
+		ax.set_title(evokeds.info['ch_names'][idx],loc='left',fontdict={'fontsize':10})
+		ax.axvline(x=0,linestyle=':',color='k')
+		ax.axhline(y=0,color='k')
+		ax.set_ylim(-AmpMax,AmpMax)
+		ax.invert_yaxis()
+
+		X_tmp = X[:, idx, :]
+		T, pval = stats.ttest_1samp(X_tmp, 0)
+		n_samples, n_tests = X_tmp.shape
+		threshold_uncorrected = stats.t.ppf(1.0 - alpha, n_samples - 1)
+		reject_bonferroni, pval_bonferroni = bonferroni_correction(pval, alpha=alpha)
+		threshold_bonferroni = stats.t.ppf(1.0 - alpha / n_tests, n_samples - 1)
+		reject_fdr, pval_fdr = fdr_correction(pval, alpha=alpha, method='indep')
+		# threshold_fdr = np.min(np.abs(T)[reject_fdr])
+		Clusters = py_tools.SearchStartStopClusterFromIndex(np.where(reject_fdr)[0])
+		for i_cluster in range(len(Clusters)):
+			ax.axvspan(Times[Clusters[i_cluster][0]], Times[Clusters[i_cluster][1]],facecolor=color,alpha=0.3)
+			
+		if (idx == evokeds.info['nchan']-1):
+			ax.legend(loc=(1,0))
+			
+	legendax = figtopo.add_axes([0.97-w,0.05,w,h]) 
+	legendax.set_xlabel('Time (s)',fontsize=10,labelpad=0)
+	legendax.set_ylabel('µV',fontsize=10,labelpad=0)
+
+	legendax.set_yticks([-AmpMax*1e6,AmpMax*1e6])
+	legendax.set_yticklabels(np.round([-AmpMax*1e6,AmpMax*1e6],1), fontsize=10)
+	legendax.set_xticks(np.arange(evokeds.times[0],evokeds.times[-1],0.4))
+	legendax.set_xticklabels(np.round(np.arange(evokeds.times[0],evokeds.times[-1],0.4),1), fontsize=10)
+	legendax.invert_yaxis()
+
+	plt.gcf().suptitle(Title)
+	plt.show()
+	
+	return figtopo
 
 
 
 
 
-def PlotEvokedDeviationFrom0(X,evokeds,colors_config,styles_config,alpha):
-    
-    figtopo = plot_compare_evokeds(evokeds, picks='eeg', colors=colors_config,styles = styles_config, axes='topo',invert_y=True,split_legend=False,legend="lower center")
-    Times =evokeds.times
-    for ele in colors_config.values():
-        colorspan = ele
-    for i_chan in range (evokeds.info['nchan']):
-            X_tmp = X[:, i_chan, :] 
-            T, pval = stats.ttest_1samp(X_tmp, 0)
-            
-            n_samples, n_tests = X_tmp.shape
-            
-            threshold_uncorrected = stats.t.ppf(1.0 - alpha, n_samples - 1)
-            
-            reject_bonferroni, pval_bonferroni = bonferroni_correction(pval, alpha=alpha)
-            threshold_bonferroni = stats.t.ppf(1.0 - alpha / n_tests, n_samples - 1)
-            
-            
-            reject_fdr, pval_fdr = fdr_correction(pval, alpha=alpha, method='indep')
-            # threshold_fdr = np.min(np.abs(T)[reject_fdr])
-            
-            Clusters = py_tools.SearchStartStopClusterFromIndex(np.where(reject_fdr)[0])
-            
-            for i_cluster in range(len(Clusters)):
-                figtopo[0].get_axes()[i_chan].axvspan(Times[Clusters[i_cluster][0]], Times[Clusters[i_cluster][1]],facecolor=colorspan,alpha=0.3)
-                    
-    return figtopo
 
 
     
@@ -220,7 +274,7 @@ def SpatTemp_TFCE_plotCompare(X, colors_config, styles_config,evokeds,p_accept,n
 				else:
 					Clust_stop[i_clustwin] = SampSign[BoundWin_ix[i_clustwin]]
 				figtopocompare[0].get_axes()[i_chan].axvspan(Clust_start[i_clustwin]/samplingFreq,Clust_stop[i_clustwin]/samplingFreq,facecolor="crimson",alpha=0.3)
-	figtopocompare[0].set_size_inches(8, 8)
+# 	figtopocompare[0].set_size_inches(8, 8)
 	return figtopocompare
     
     # Emergence_clust_bool = np.zeros((evokeds.times.size,evokeds.info['nchan']),dtype='bool')

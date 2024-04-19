@@ -12,6 +12,8 @@ from AddPyABA_Path import PyABA_path
 import sys
 sys.path.append(PyABA_path + '/PyGazeAnalyser')
 from pygazeanalyser import detectors
+from pygazeanalyser.gazeplotter import draw_heatmap
+
 
 sys.path.append(PyABA_path)
 import py_tools
@@ -58,8 +60,8 @@ def ComputeFeature_GazeEpoch(Gaze_data,Times_epoch, SampFreq, Target_Pix_RefCros
 	FixPeriod_GainAUC = np.nan
 	GainAUC_TargetDisplayPeriod = np.nan
 	
-	ix_ShowTarget = np.int(np.where((Times_epoch==0.0))[0])
-	ix_HideTarget  = np.int(np.where((Times_epoch==TargetFixationDuration))[0])
+	ix_ShowTarget = np.where((Times_epoch==0.0))[0][0]
+	ix_HideTarget  = np.where((Times_epoch==TargetFixationDuration))[0][0]
 	    
 	Ssac, Esac = detectors.saccade_detection(Gaze_data, Gaze_data, Times_epoch*SampFreq, minlen = 20,  maxvel=MaxVelocitySaccade)
 	Sacc2Target_PosStart = []
@@ -128,8 +130,8 @@ def ComputeFeature_GazeEpoch(Gaze_data,Times_epoch, SampFreq, Target_Pix_RefCros
 						Fix_OnTarget_LatStart = np.append(Fix_OnTarget_LatStart,Efix[ifix][0])
 						Fix_OnTarget_LatEnd = np.append(Fix_OnTarget_LatEnd,Efix[ifix][1])
 						FixDurationOnTarget =  FixDurationOnTarget + (Efix[ifix][1]-Efix[ifix][0])
-						ix_start_Fix = np.int(np.where((Times_epoch*SampFreq==Efix[ifix][0]))[0])
-						ix_stop_Fix  = np.int(np.where((Times_epoch*SampFreq==Efix[ifix][1]))[0])
+						ix_start_Fix = np.where((Times_epoch*SampFreq==Efix[ifix][0]))[0][0]
+						ix_stop_Fix  = np.where((Times_epoch*SampFreq==Efix[ifix][1]))[0][0]
 						FixData_Curr = Gaze_data[ix_start_Fix:ix_stop_Fix]
 						AllFixData = np.append(AllFixData,FixData_Curr)
 						NbNan = NbNan + len(np.where(np.isnan(Gaze_data[ix_start_Fix:ix_stop_Fix]))[0])
@@ -140,8 +142,8 @@ def ComputeFeature_GazeEpoch(Gaze_data,Times_epoch, SampFreq, Target_Pix_RefCros
 					Fix_OnTarget_LatStart = np.append(Fix_OnTarget_LatStart,Efix[ifix][0])
 					Fix_OnTarget_LatEnd = np.append(Fix_OnTarget_LatEnd,Efix[ifix][1])
 					FixDurationOnTarget =  FixDurationOnTarget + (Efix[ifix][1]-Efix[ifix][0])
-					ix_start_Fix = np.int(np.where((Times_epoch*SampFreq==Efix[ifix][0]))[0])
-					ix_stop_Fix  = np.int(np.where((Times_epoch*SampFreq==Efix[ifix][1]))[0])
+					ix_start_Fix = np.where((Times_epoch*SampFreq==Efix[ifix][0]))[0][0]
+					ix_stop_Fix  = np.where((Times_epoch*SampFreq==Efix[ifix][1]))[0][0]
 					FixData_Curr = Gaze_data[ix_start_Fix:ix_stop_Fix]
 					AllFixData = np.append(AllFixData,FixData_Curr)
 					NbNan = NbNan + len(np.where(np.isnan(Gaze_data[ix_start_Fix:ix_stop_Fix]))[0])
@@ -320,3 +322,130 @@ def PlotFixationGaze_STEP(DATA, Times_epoch, SampFreq, TargetName, Target_PixPos
 			 'LogAmpGain_RightEye':FixationOnTarget_AmplitudeGain_RightEye,
 			 'FixationDurationOnTarget_LeftEye':FixDurationOnTarget_LeftEye,
 			 'FixationDurationOnTarget_RightEye':FixDurationOnTarget_RightEye}
+
+
+def PlotFixationOnCross(Kind_VisAtt, EyeName, TabAttSide,NbBlocks,ListGaze_X,ListGaze_Y,SampFreq,ScreenResolution_Width,ScreenResolution_Height,Cross_X,Cross_Y,Cross_Area_X,Cross_Area_Y):
+	Percentage_FixationCross = np.zeros(NbBlocks)
+
+	NbRow = int(np.ceil(np.sqrt(NbBlocks)))
+	NbCol = int(np.ceil(NbBlocks/NbRow))
+	fig, axs = plt.subplots(NbRow,NbCol,figsize=(12,10))
+	fig.suptitle(Kind_VisAtt + ' : ' + EyeName + 'Eye Gaze Fixation')
+	axs = axs.ravel()
+	
+	for i_block in range(NbBlocks):
+		AttSide = TabAttSide[i_block]
+		
+		Gaze_X = ListGaze_X[i_block]
+		Gaze_Y = ListGaze_Y[i_block]
+		
+		time_Block = np.array(range(len(Gaze_X)))/SampFreq
+		axs[i_block].set_facecolor((0.0, 0.0, 0.5))
+		
+		# Detect Fixation on Left Eye
+		Sfix, Efix = detectors.fixation_detection(Gaze_X, Gaze_Y, time_Block*SampFreq, missing=np.NaN, maxdist=25, mindur=50)
+		for i_fix in range(len(Efix)):
+			gazex_curr = Gaze_X[range(int(Efix[i_fix][0]) , int(Efix[i_fix][1]))]
+			gazey_curr = Gaze_Y[range(int(Efix[i_fix][0]) , int(Efix[i_fix][1]))]
+			if (np.sum(np.array(np.isnan(gazex_curr), dtype=int)) > 0 ):
+				gazex_curr = gazex_curr[np.invert(np.isnan(gazex_curr))]
+				gazey_curr = gazey_curr[np.invert(np.isnan(gazey_curr))]
+				Efix[i_fix][1] = Efix[i_fix][0] + float(len(gazex_curr))
+				Efix[i_fix][2] = float(len(gazex_curr))
+				Efix[i_fix][3] = np.mean(gazex_curr)
+				Efix[i_fix][4] = np.mean(gazey_curr)
+		draw_heatmap(Efix, (ScreenResolution_Width,ScreenResolution_Height), imagefile=None, durationweight=True, alpha=1.0,savefilename=None,ax=axs[i_block])    # Detect Fixation 
+		axs[i_block].vlines(Cross_X,0,ScreenResolution_Height,'w',linestyle ='dotted',linewidth=2)
+		axs[i_block].hlines(Cross_Y,0,ScreenResolution_Width,'w',linestyle ='dotted',linewidth=2)
+		axs[i_block].set_xlim(0,ScreenResolution_Width)
+		axs[i_block].set_ylim(0,ScreenResolution_Height)
+		
+		# Plot Cross Area
+		axs[i_block].vlines(Cross_Area_X[0],Cross_Area_Y[0],Cross_Area_Y[1],'w',linestyle ='dotted')
+		axs[i_block].vlines(Cross_Area_X[1],Cross_Area_Y[0],Cross_Area_Y[1],'w',linestyle ='dotted')
+		axs[i_block].hlines(Cross_Area_Y[0],Cross_Area_X[0],Cross_Area_X[1],'w',linestyle ='dotted')
+		axs[i_block].hlines(Cross_Area_Y[1],Cross_Area_X[0],Cross_Area_X[1],'w',linestyle ='dotted')
+		axs[i_block].xaxis.set_ticklabels([])
+		axs[i_block].yaxis.set_ticklabels([])
+	
+		# Compute Percentage of Cross fixation
+		DurationFix_Cross = 0
+		TotalDuration = np.sum(np.array(np.invert(np.isnan(Gaze_X)), dtype=int))
+		for i_fix in range(len(Efix)):
+			Condition_X = (Efix[i_fix][3]>Cross_Area_X[0]) & (Efix[i_fix][3]<Cross_Area_X[1])
+			Condition_Y = (Efix[i_fix][4]>Cross_Area_Y[0]) & (Efix[i_fix][4]<Cross_Area_Y[1])
+			if (Condition_X & Condition_Y):
+				DurationFix_Cross = DurationFix_Cross + Efix[i_fix][2]
+				
+		if (TotalDuration>0):
+			Percentage_FixationCross[i_block] = DurationFix_Cross*100/TotalDuration
+		else:
+			Percentage_FixationCross[i_block] = np.NaN
+			
+		axs[i_block].set_title('Trial #' + str(i_block+1) + ' Attented side : ' + r"$\bf{" + AttSide + "}$"  + ' - Cross Fixation : ' + f'{Percentage_FixationCross[i_block]:.2f}' + '%',fontsize=8)
+	return Percentage_FixationCross
+
+
+
+def PlotDetectSaccade(Kind_VisAtt,TabAttSide,NbBlocks,ListGaze_LEye_X,ListGaze_LEye_Y,ListGaze_REye_X,ListGaze_REye_Y,SampFreq,Pix2DegCoeff,Cross_X,Cross_Y,Excentricity,ScreenResolution_Width,ScreenResolution_Height):
+	NbSaccades_LEye =np.zeros(NbBlocks)
+	NbSaccades_REye =np.zeros(NbBlocks)
+	NbRow = int(np.ceil(np.sqrt(NbBlocks)))
+	NbCol = int(np.ceil(NbBlocks/NbRow))
+	fig, axs = plt.subplots(NbRow,NbCol,figsize=(12,10))
+	fig.suptitle(Kind_VisAtt + ' : Gaze - Detect Saccades')
+	axs = axs.ravel()
+	for i_block in range(NbBlocks):
+		AttSide = TabAttSide[i_block]
+
+		Gaze_LEye_X = ListGaze_LEye_X[i_block]
+		Gaze_LEye_Y = ListGaze_LEye_Y[i_block]
+		Gaze_REye_X = ListGaze_REye_X[i_block]
+		Gaze_REye_Y = ListGaze_REye_Y[i_block]
+		
+		time_Block = np.array(range(len(Gaze_LEye_X)))/SampFreq
+		
+		# Detect saccades
+		Ssac_LE, Esac_LE = detectors.saccade_detection(Gaze_LEye_X, Gaze_LEye_Y, time_Block*SampFreq, minlen = 20,  maxvel=400)
+		Ssac_RE, Esac_RE = detectors.saccade_detection(Gaze_REye_X, Gaze_REye_Y, time_Block*SampFreq, minlen = 20,  maxvel=400)
+		
+		axs[i_block].plot(time_Block,(Gaze_LEye_X-Cross_X)*Pix2DegCoeff,'r')
+		axs[i_block].plot(time_Block,(Gaze_REye_X-Cross_X)*Pix2DegCoeff,'g')
+		
+		SaccAmp_Min_Deg = (Excentricity/2)*Pix2DegCoeff
+		nbsacc_LE =0
+		
+		for i_sac in range(len(Esac_LE)):
+			Amp_Sacc_Curr = Esac_LE[i_sac][5]-Esac_LE[i_sac][3]
+			ix_start_Fix = np.where((time_Block*SampFreq==Esac_LE[i_sac][0]))[0][0]
+			ix_stop_Fix  = np.where((time_Block*SampFreq==Esac_LE[i_sac][1]))[0][0]
+			SaccData_Curr = Gaze_LEye_X[ix_start_Fix:ix_stop_Fix]
+			
+		
+			Condition1 = np.abs(Amp_Sacc_Curr)>(SaccAmp_Min_Deg/Pix2DegCoeff)
+			Condition2 = len(np.where(np.isnan(SaccData_Curr))[0])/len(SaccData_Curr) < 0.2
+
+			if (Condition1&Condition2):
+				axs[i_block].axvspan(Esac_LE[i_sac][0]/SampFreq,Esac_LE[i_sac][1]/SampFreq,color='r',alpha=0.3)
+				nbsacc_LE = nbsacc_LE + 1
+			
+		nbsacc_RE =0
+		for i_sac in range(len(Esac_RE)):
+			Amp_Sacc_Curr = Esac_RE[i_sac][5]-Esac_RE[i_sac][3]
+			ix_start_Fix = np.where((time_Block*SampFreq==Esac_RE[i_sac][0]))[0][0]
+			ix_stop_Fix  = np.where((time_Block*SampFreq==Esac_RE[i_sac][1]))[0][0]
+			SaccData_Curr = Gaze_REye_X[ix_start_Fix:ix_stop_Fix]
+	
+			Condition1 = np.abs(Amp_Sacc_Curr)>(SaccAmp_Min_Deg/Pix2DegCoeff)
+			Condition2 = len(np.where(np.isnan(SaccData_Curr))[0])/len(SaccData_Curr) < 0.2
+	
+			if (Condition1&Condition2):
+				axs[i_block].axvspan(Esac_RE[i_sac][0]/SampFreq,Esac_RE[i_sac][1]/SampFreq,color='g',alpha=0.3)
+				nbsacc_RE = nbsacc_RE + 1			
+		axs[i_block].set_title('Trial #' + str(i_block+1) + ' Attented side : ' + r"$\bf{" + AttSide + "}$"  + ' - Number of saccades : ' + str(np.max([nbsacc_LE,nbsacc_RE])) ,fontsize=8)
+		axs[i_block].set_ylim(bottom=-Cross_X*Pix2DegCoeff, top=(ScreenResolution_Width-Cross_X)*Pix2DegCoeff)
+		axs[i_block].tick_params(axis='x', labelsize=6)
+		NbSaccades_LEye[i_block] = nbsacc_LE
+		NbSaccades_REye[i_block] = nbsacc_RE
+	
+	return NbSaccades_LEye,NbSaccades_REye

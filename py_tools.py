@@ -11,12 +11,59 @@ import sys
 from scipy.ndimage import gaussian_filter
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
+from scipy import interpolate
+
 
 from pyriemann.utils.base import expm, invsqrtm, logm, sqrtm
 from pyriemann.utils.covariance import covariances_EP
 from pyriemann.utils.mean import mean_riemann
 from scipy.linalg import eigvalsh
 import mne_tools
+
+from PyQt5.QtWidgets import QFileDialog,QListView,QAbstractItemView,QTreeView
+
+
+def RemplaceContentAndCopy(OrigFile, NewFile, TargetText, RemplacementText):
+	# Opening our text file in read only 
+	# mode using the open() function 
+	with open(OrigFile, 'r') as file: 
+	  
+	    # Reading the content of the file 
+	    # using the read() function and storing 
+	    # them in a new variable 
+	    data = file.read() 
+	  
+	    # Searching and replacing the text 
+	    # using the replace() function 
+	    data = data.replace(TargetText, RemplacementText) 
+	  
+	# Opening our text file in write only 
+	# mode to write the replaced content 
+	with open(NewFile, 'w') as file: 
+	  
+	    # Writing the replaced data in our 
+	    # text file 
+	    file.write(data) 
+
+def select_folders(RootDirectory):
+			
+	file_dialog = QFileDialog()
+	file_dialog.setDirectory(RootDirectory)
+	file_dialog.setFileMode(QFileDialog.DirectoryOnly)
+	file_dialog.setOption(QFileDialog.DontUseNativeDialog, True)
+	file_view = file_dialog.findChild(QListView, 'listView')
+	
+	# to make it possible to select multiple directories:
+	if file_view:
+	    file_view.setSelectionMode(QAbstractItemView.MultiSelection)
+	f_tree_view = file_dialog.findChild(QTreeView)
+	if f_tree_view:
+	    f_tree_view.setSelectionMode(QAbstractItemView.MultiSelection)
+	
+	if file_dialog.exec():
+	    paths = file_dialog.selectedFiles()
+		
+	return paths
 
 def remove_multelements(List,elem): 
     for ele in sorted(elem, reverse = True):
@@ -503,3 +550,35 @@ def gen_superlet_testdata(freqs=[20, 40, 60], cycles=11, fs=1000, eps=0):
     return signal
 
 
+def fill_nan(A):
+	'''
+	interpolate to fill nan values
+	'''
+	inds = np.arange(A.shape[0])
+	good = np.where(np.isfinite(A))
+	
+	if (len(good[0])>0):
+		if (np.isnan(A[0])):
+			A[0] = A[good[0][0]]
+			
+		if (np.isnan(A[-1])):
+			A[-1] = A[good[0][-1]]	
+		good = np.where(np.isfinite(A))
+		f = interpolate.interp1d(inds[good], A[good],bounds_error=False)
+		B = np.where(np.isfinite(A),A,f(inds))
+	else:
+		B=[]
+	return B
+
+
+def AutoReject(Data,PercentageOfEpochsRejected):
+	NbEpoch2Keep = int(np.fix(Data.shape[0] * (1.0-(PercentageOfEpochsRejected/100)))-1)
+	Mat_epoch =  Data
+	MinWOI = Mat_epoch.min(axis=1)
+	MaxWOI = Mat_epoch.max(axis=1)
+	Peak2Peak = MaxWOI-MinWOI
+	Peak2Peak.sort()
+	Threshold = Peak2Peak[NbEpoch2Keep-1]
+	ixRej = np.squeeze(np.where(Peak2Peak>Threshold))
+	KeptData = np.delete(Data, ixRej, 0)
+	return KeptData

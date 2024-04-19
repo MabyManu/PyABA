@@ -32,10 +32,10 @@ def Xdawn(raw, events_id, tmin_time_window_s, tmax_time_window_s, nb_spatial_fil
     Time_windows_s = tmax_time_window_s - tmin_time_window_s
     erp_nb_samples = int(np.round(Time_windows_s*raw.info["sfreq"])) + 1
     Offset = int(np.round(tmin_time_window_s*raw.info["sfreq"]))
-    events_from_annot,_ = mne.events_from_annotations(raw, event_id=events_id)
+    events_from_annot,_ = mne.events_from_annotations(raw, event_id=events_id,verbose='ERROR')
     events_indexes =events_from_annot[:,0]-1 + Offset # indexes corresponding to the times of flashes ==> gotta convert them to integers
     
-    events_from_annot_target,_ = mne.events_from_annotations(raw, event_id={list(events_id.keys())[0]:list(events_id.values())[0]})
+    events_from_annot_target,_ = mne.events_from_annotations(raw, event_id={list(events_id.keys())[0]:list(events_id.values())[0]},verbose='ERROR')
     events_target_indexes = events_from_annot_target[:,0]-1 + Offset# indexes target stimulievents_id
     
     
@@ -304,27 +304,26 @@ def CrossValidationOnBlocks(Features_Stim1Std_AttStim1,
 
 
 def Ave_Epochs_FeatComp(epochs,SpatialFiler,TabNbStimPerBlock,rejection_rate):
-    _,_,_,ixEpochs2Remove,_ = mne_tools.RejectThresh(epochs,int(rejection_rate*100))
-    NbBlocksPerCond = len(TabNbStimPerBlock)  
-    
-    DataMat= epochs.get_data()
-    _,nb_channels,nb_samples  = DataMat.shape
-    _,nb_virtual_channels = SpatialFiler.shape
-    
-    AllFeatures = np.zeros((NbBlocksPerCond,nb_samples * nb_virtual_channels))
-    ix = 0
-    for i_block in range(NbBlocksPerCond):
-        slice_ix = np.arange(ix,ix + TabNbStimPerBlock[i_block],dtype=np.int64)
-        slice_ix_rej = np.setdiff1d(slice_ix, np.intersect1d(ixEpochs2Remove,slice_ix))
-        
-        MeanCurr = np.squeeze(np.mean(DataMat[slice_ix_rej,:,:],axis=0))
-        VirtMean = np.transpose(np.dot(MeanCurr.T,SpatialFiler))
-        Feature = VirtMean.reshape(1,( nb_samples * nb_virtual_channels))
-        
-        AllFeatures[i_block,:] = Feature
-        
-        ix = ix + TabNbStimPerBlock[i_block]
-    return AllFeatures
+	_,_,_,ixEpochs2Remove,_ = mne_tools.RejectThresh(epochs,int(rejection_rate*100))
+	NbBlocksPerCond = len(TabNbStimPerBlock)  
+	
+	DataMat= epochs.get_data(copy=True)
+	_,nb_channels,nb_samples  = DataMat.shape
+	_,nb_virtual_channels = SpatialFiler.shape
+	AllFeatures = np.zeros((NbBlocksPerCond,nb_samples * nb_virtual_channels))
+	ix = 0
+	for i_block in range(NbBlocksPerCond):
+		slice_ix = np.arange(ix,ix + TabNbStimPerBlock[i_block],dtype=np.int64)
+		slice_ix_rej = np.setdiff1d(slice_ix, np.intersect1d(ixEpochs2Remove,slice_ix))
+		if (len(slice_ix_rej)>0):
+			MeanCurr = np.squeeze(np.nanmean(DataMat[slice_ix_rej,:,:],axis=0))
+			VirtMean = np.transpose(np.dot(MeanCurr.T,SpatialFiler))
+			Feature = VirtMean.reshape(1,( nb_samples * nb_virtual_channels))
+		else:
+			Feature = np.zeros(nb_samples * nb_virtual_channels)
+		AllFeatures[i_block,:] = Feature
+		ix = ix + TabNbStimPerBlock[i_block]
+	return AllFeatures
 
 
 
@@ -503,8 +502,8 @@ def riemann_template_learn(EpochsTargets, EpochsNoTargets, rejection_rate, Gain)
     Epo_NoTarg.drop(ixEpochs2Remove,verbose=False)
     
     
-    epochs_T  = Epo_Targ.get_data()*Gain
-    epochs_NT = Epo_NoTarg.get_data()*Gain
+    epochs_T  = Epo_Targ.get_data(copy=True)*Gain
+    epochs_NT = Epo_NoTarg.get_data(copy=True)*Gain
     ERP_Template_Target = np.mean(epochs_T, axis=0)
     ERP_Template_NoTarget = np.mean(epochs_NT, axis=0)
 
@@ -581,9 +580,9 @@ def riemannOneBlockApply(riemann_template,Epoch_Test,Gain):
     R_TNT_tot =np.zeros(l_nbFlashsPerBlock)
 
     v_NbItemsPerPart = len(np.unique(LabelEvt))
-    SingleTrial_curr = np.zeros((1,Epoch_Test.get_data().shape[1],Epoch_Test.get_data().shape[2]))
+    SingleTrial_curr = np.zeros((1,Epoch_Test.get_data(copy=True).shape[1],Epoch_Test.get_data(copy=True).shape[2]))
     for j_flashs in range(l_nbFlashsPerBlock):
-        SingleTrial_curr[0,:,:] = Epoch_Test.get_data()[j_flashs,:,:]*Gain
+        SingleTrial_curr[0,:,:] = Epoch_Test.get_data(copy=True)[j_flashs,:,:]*Gain
         # Curr_Cov = tools_Riemann.covariances_EP(SingleTrial_curr, ERP_Template_Target)
         Curr_Cov = np.squeeze(covariances_EP(SingleTrial_curr, ERP_Template_Target, estimator='oas'))
         Curr_r_TNT = np.squeeze(predict_R_TNT(Curr_Cov, MatCov_T,MatCov_NT))

@@ -6,19 +6,23 @@ Created on Fri Jan 13 09:26:16 2023
 """
 import numpy as np
 from scipy.signal import fftconvolve
-
+import scipy.signal as signal
+from scipy.signal import hilbert
 import sys
 from scipy.ndimage import gaussian_filter
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 from scipy import interpolate
 
+import h5py
 
 from pyriemann.utils.base import expm, invsqrtm, logm, sqrtm
 from pyriemann.utils.covariance import covariances_EP
 from pyriemann.utils.mean import mean_riemann
 from scipy.linalg import eigvalsh
 import mne_tools
+import os
+import json
 
 from PyQt5.QtWidgets import QFileDialog,QListView,QAbstractItemView,QTreeView
 
@@ -582,3 +586,184 @@ def AutoReject(Data,PercentageOfEpochsRejected):
 	ixRej = np.squeeze(np.where(Peak2Peak>Threshold))
 	KeptData = np.delete(Data, ixRej, 0)
 	return KeptData
+
+
+
+
+def append_to_json_file(file_path, new_data):
+    # Vérifier si le fichier existe
+    if not os.path.isfile(file_path):
+        # Si le fichier n'existe pas, initialiser un tableau vide
+        data = []
+    else:
+        # Lire le contenu existant du fichier JSON
+        with open(file_path, 'r', encoding='utf-8') as file:
+            try:
+                data = [json.load(file)]
+            except json.JSONDecodeError:
+                # Si le fichier est vide ou corrompu, initialiser un tableau vide
+                data = []
+
+    # Ajouter les nouvelles données au contenu existant
+    if isinstance(data, list):
+        data.append(new_data)
+    else:
+        # Si le fichier JSON n'est pas un tableau, lever une exception
+        raise ValueError("Le fichier JSON doit contenir un tableau à la racine.")
+
+    # Écrire les données mises à jour dans le fichier JSON
+    with open(file_path, 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False, indent=4)
+		
+		
+		
+		
+		
+def linearly_interpolate_nans(y):
+	# Fit a linear regression to the non-nan y values
+	
+	# Create X matrix for linreg with an intercept and an index
+	X = np.vstack((np.ones(len(y)), np.arange(len(y))))
+	
+	# Get the non-NaN values of X and y
+	X_fit = X[:, ~np.isnan(y)]
+	y_fit = y[~np.isnan(y)].reshape(-1, 1)
+	
+	# Estimate the coefficients of the linear regression
+	beta = np.linalg.lstsq(X_fit.T, y_fit,rcond=-1)[0]
+	
+	# Fill in all the nan values using the predicted coefficients
+	y.flat[np.isnan(y)] = np.dot(X[:, np.isnan(y)].T, beta)
+	return y
+
+
+
+def calculer_spectre(signal, frequence_echantillonnage):
+	"""
+	Calcule le spectre d'un signal en utilisant la transformation de Fourier rapide (FFT).
+	
+	:param signal: Le signal temporel (array-like).
+	:param frequence_echantillonnage: La fréquence d'échantillonnage du signal en Hz.
+	:return: Les fréquences et le spectre (amplitude) du signal.
+	"""
+	# Calcul de la FFT
+	spectre = np.fft.fft(signal)
+	
+	# Calculer la phase
+	phase = np.angle(spectre)
+	# Nombre de points dans le signal
+	n  = len(signal)
+	    
+	# Fréquences associées aux composants de la FFT
+	freqs = np.fft.fftfreq(n, 1 / frequence_echantillonnage)
+	    
+	# Sélectionner la moitié du spectre (partie positive des fréquences)
+	freqs = freqs[:n // 2]
+	spectre = np.abs(spectre[:n // 2]) / n
+	phase = phase[:n // 2]
+	return freqs, spectre,phase
+
+
+
+def bandpass_filter(data, lowcut, highcut, fs, order=2):
+    nyquist = 0.5 * fs
+    low = lowcut / nyquist
+    high = highcut / nyquist
+    b, a = signal.butter(order, [low, high], btype='band')
+    y = signal.lfilter(b, a, data)
+    return y
+
+
+
+def highpass_filter(data, cutoff_freq, sample_rate, order=2):
+    """
+    Applique un filtre passe-haut à un signal.
+
+    Parameters:
+    data (array-like): Le signal à filtrer.
+    cutoff_freq (float): La fréquence de coupure du filtre (en Hz).
+    sample_rate (float): La fréquence d'échantillonnage du signal (en Hz).
+    order (int): L'ordre du filtre. Plus l'ordre est élevé, plus le filtrage est précis. (par défaut 5)
+
+    Returns:
+    array-like: Le signal filtré.
+    """
+    nyquist = 0.5 * sample_rate  # Fréquence de Nyquist
+    normal_cutoff = cutoff_freq / nyquist  # Fréquence de coupure normalisée
+
+    # Conception du filtre passe-haut Butterworth
+    b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
+
+    # Application du filtre
+    filtered_data = signal.filtfilt(b, a, data)
+
+    return filtered_data
+
+
+
+
+def phase_atFreqTarget(signal,FreqTarget, fs, bandwidth=0.5):
+	filtered_signal = bandpass_filter(signal, FreqTarget - bandwidth / 2, FreqTarget + bandwidth / 2, fs)
+	analytic_signal = hilbert(filtered_signal)
+	instantaneous_phase = np.angle(analytic_signal)
+	return instantaneous_phase
+
+
+
+def phase_synchrony_index(signal,Deltaf,Freqmin,Freqmax, fs, bandwidth=1.0):
+	"""
+	Calcule la synchronie de phase entre toutes fréquences pour un signal donné.
+	:param signal: Le signal d'entrée (array)
+ 	:param Deltaf: précison fréquentielle (Hz)
+ 	:param Freqmin: Fréquence min (Hz)
+ 	:param Freqmax: Fréquence max (Hz)
+ 	:param bandwidth: Largeur de bande pour le filtrage passe-bande
+ 	:return: Indice de synchronie de phase entre f1 et f2
+ 	"""
+	 
+	 
+	freqs = np.arange(Freqmin,Freqmax,Deltaf)
+	CoSpectral_Sync = np.zeros((len(freqs),len(freqs)))
+	for i_freq1,freq_curr1 in enumerate(freqs):
+		filtered_signal1 = bandpass_filter(signal, freq_curr1 - bandwidth / 2, freq_curr1 + bandwidth / 2, fs)
+		# Calculer les phases instantanées
+		analytic_signal1 = hilbert(filtered_signal1)
+		instantaneous_phase1 = np.angle(analytic_signal1)
+		for i_freq2,freq_curr2 in enumerate(freqs):
+			filtered_signal2 = bandpass_filter(signal, freq_curr2 - bandwidth / 2, freq_curr2 + bandwidth / 2, fs)
+			analytic_signal2 = hilbert(filtered_signal2)
+			instantaneous_phase2 = np.angle(analytic_signal2)
+			
+			# Calculer les différences de phase
+			phase_diff = instantaneous_phase1 - instantaneous_phase2
+			phase_diff = np.mod(phase_diff + np.pi, 2 * np.pi) - np.pi  # Ramener à [-π, π]
+			
+			# Calculer l'indice de synchronie de phase
+			CoSpectral_Sync[i_freq1,i_freq2] = np.abs(np.mean(np.exp(1j * phase_diff)))
+			
+	return CoSpectral_Sync,freqs
+
+
+
+
+
+
+
+
+
+
+
+def ReadTemplate_H5(Template_H5Filename):
+    f = h5py.File(Template_H5Filename, 'r')
+    
+    print('## Lecture du fichier {}'.format(Template_H5Filename))
+    
+    TemplateParams = {}
+    for element in f:
+        groupe = f[element]
+                    
+        for element in groupe:
+            TemplateParams[element] = groupe[element][:]
+            
+    return TemplateParams
+        

@@ -14,13 +14,194 @@ import sys
 sys.path.append(PyABA_path)
 import py_tools
 
+
+def ReadCalib_TemplateBrainReality(JsonFileName):
+	with open(JsonFileName) as json_data:
+		print(type(json_data))
+		data_dict = json.load(json_data)
+	
+	AccP300 = data_dict['AccP300']
+	TargetMean = np.array(json.loads((data_dict['targetEpochMu'])))
+	NonTargetMean = np.array(json.loads((data_dict['nonTargetEpochMu'])))
+	return TargetMean,NonTargetMean
+		
+def ReadJsonData_BR(JsonFileName):
+	with open(JsonFileName) as json_data:
+		print(type(json_data))
+		data_dict = json.load(json_data)
+		
+	Settings = data_dict['Settings']['Values'][0]
+	SamplingFrequency = Settings['samplingRate']
+	ChannelsName = Settings['channelNameList']
+	NbChans = len(ChannelsName)
+	NumberOfRepetitions = Settings['stimulationSettings']['calibrationStimuliCount']
+	
+	NbSampleWin = Settings['nbSampleWin']
+	
+	
+	NbItems = len(data_dict['Visibility']['Values'])
+	# EPOCH
+	
+	Nb_Epochs_TOT = len(data_dict['Epochs']['Values'])
+	ListEvt_Target = []
+	ListEvt_NoTarget = []
+	
+	Data_epo_Target = []
+	Data_epo_NoTarget = []
+	
+	Data_epo_Raw_Target = []	
+	Data_epo_Raw_NoTarget = []
+	
+	for i_epoch in range(Nb_Epochs_TOT):
+		Data_Epoch_curr = data_dict['Epochs']['Values'][i_epoch]
+		Epoch_Filt = np.array(Data_Epoch_curr['filteredData'])
+		Epoch_raw = np.array(Data_Epoch_curr['eegData'])
+		Stim_Param_curr = Data_Epoch_curr['stimulation']
+		
+		if (i_epoch ==0):
+			PosixT0 = Stim_Param_curr['PosXTime']
+		latency = int((Stim_Param_curr['PosXTime'] - PosixT0)*SamplingFrequency/1000)
+		NameStim = Stim_Param_curr['StimulusNameList'][0]
+		numcol = int(NameStim[6:])
+		Target = Stim_Param_curr['IsTarget']
+		if Target:
+			ListEvt_Target.append([latency,0,numcol + Target * 10]) 
+			Data_epo_Target.append(Epoch_Filt)
+			Data_epo_Raw_Target.append(Epoch_raw)
+		else:
+			ListEvt_NoTarget.append([latency,0,numcol]) 
+			Data_epo_NoTarget.append(Epoch_Filt)
+			Data_epo_Raw_NoTarget.append(Epoch_raw)
+			
+				
+	Data_epo_Target = np.array(Data_epo_Target)
+	Data_epo_NoTarget = np.array(Data_epo_NoTarget)
+	Data_epo_Raw_Target = np.array(Data_epo_Raw_Target)
+	Data_epo_Raw_NoTarget = np.array(Data_epo_Raw_NoTarget)
+	ListEvt_Target = np.array(ListEvt_Target) 	
+	ListEvt_NoTarget = np.array(ListEvt_NoTarget) 	
+	return Data_epo_Target,	Data_epo_NoTarget, Data_epo_Raw_Target,Data_epo_Raw_NoTarget,SamplingFrequency,ListEvt_Target,ListEvt_NoTarget
+
+def ReadCalib_JsonFile_BrainReality(JsonFileName):
+	with open(JsonFileName) as json_data:
+		print(type(json_data))
+		data_dict = json.load(json_data)
+		
+	Settings = data_dict['Settings']['Values'][0]
+	SamplingFrequency = Settings['samplingRate']
+	ChannelsName = Settings['channelNameList']
+	NbChans = len(ChannelsName)
+	NumberOfRepetitions = Settings['stimulationSettings']['calibrationStimuliCount']
+	
+	NbSampleWin = Settings['nbSampleWin']
+	
+	
+	NbItems = len(data_dict['Visibility']['Values'])
+	# EPOCH
+	
+	Nb_Epochs_TOT = len(data_dict['Epochs']['Values'])
+	ListEvt_Target = []
+	ListEvt_NoTarget = []
+	
+	Data_epo_Target = []
+	Data_epo_NoTarget = []
+	
+	Data_epo_Raw_Target = []	
+	Data_epo_Raw_NoTarget = []
+	
+	for i_epoch in range(Nb_Epochs_TOT):
+		Data_Epoch_curr = data_dict['Epochs']['Values'][i_epoch]
+		Epoch_Filt = np.array(Data_Epoch_curr['filteredData'])
+		Epoch_raw = np.array(Data_Epoch_curr['eegData'])
+		Stim_Param_curr = Data_Epoch_curr['stimulation']
+		
+		if (i_epoch ==0):
+			PosixT0 = Stim_Param_curr['PosXTime']
+		latency = int((Stim_Param_curr['PosXTime'] - PosixT0)*SamplingFrequency/1000)
+		NameStim = Stim_Param_curr['StimulusNameList'][0]
+		numcol = int(NameStim[6:])
+		Target = Stim_Param_curr['IsTarget']
+		if Target:
+			ListEvt_Target.append([latency,0,numcol + Target * 10]) 
+			Data_epo_Target.append(Epoch_Filt)
+			Data_epo_Raw_Target.append(Epoch_raw)
+		else:
+			ListEvt_NoTarget.append([latency,0,numcol]) 
+			Data_epo_NoTarget.append(Epoch_Filt)
+			Data_epo_Raw_NoTarget.append(Epoch_raw)
+			
+			
+		
+			
+			
+	Data_epo_Target = np.array(Data_epo_Target)
+	Data_epo_NoTarget = np.array(Data_epo_NoTarget)
+			
+	Nb_Evt_Targets = len(ListEvt_Target)
+	Nb_Evt_NoTargets = len(ListEvt_NoTarget)
+	
+	
+	MatEvt_Target = np.array(ListEvt_Target)
+	MatEvt_NoTarget = np.array(ListEvt_NoTarget)
+	
+	ch_types_Chan = []
+	for i_chan in range(NbChans):
+		ch_types_Chan.append('eeg')
+	
+	NbTargets  = int((Nb_Evt_Targets + Nb_Evt_NoTargets)/(NumberOfRepetitions*NbItems))
+	
+			
+			
+	info = mne.create_info(ChannelsName, SamplingFrequency, ch_types=ch_types_Chan)
+	ten_twenty_montage = mne.channels.make_standard_montage('standard_1020')
+	
+	Evtcurr = np.unique(MatEvt_Target[:,2])
+	event_id = {}
+	for ievtcurr in range(len(Evtcurr)):
+		Labelevtcurr = 'Col' + str(Evtcurr[ievtcurr]-10) + '/Target'
+		event_id[Labelevtcurr] = Evtcurr[ievtcurr] 
+	Epochs_Target=mne.EpochsArray(Data_epo_Target*1e-6,info=info,events = MatEvt_Target, event_id=event_id)
+	Epochs_Target.set_montage(ten_twenty_montage)
+	
+	
+	
+	Evtcurr = np.unique(MatEvt_NoTarget[:,2])
+	event_id = {}
+	for ievtcurr in range(len(Evtcurr)):
+		Labelevtcurr = 'Col' + str(Evtcurr[ievtcurr]) + '/NoTarget'
+		event_id[Labelevtcurr] = Evtcurr[ievtcurr]
+	
+	Epochs_NoTarget=mne.EpochsArray(Data_epo_NoTarget*1e-6,info=info,events = MatEvt_NoTarget, event_id=event_id)
+	Epochs_NoTarget.set_montage(ten_twenty_montage)
+	
+	return Epochs_Target,Epochs_NoTarget,NumberOfRepetitions,NbItems,NbTargets
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def ReadCalib_JsonFile_Mentalink4(JsonFileName,FlagEpochFlex=False):
 	Flag_ForcingChannelsName = False
 	with open(JsonFileName) as json_data:
 		print(type(json_data))
 		data_dict = json.load(json_data)
 		
-	Settings = data_dict['Setting']
+	Settings = data_dict['Settings']
 	SamplingFrequency = Settings['SampleRate']
 	
 	if (FlagEpochFlex & (SamplingFrequency == 128)):

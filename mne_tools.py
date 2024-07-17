@@ -11,6 +11,11 @@ from mne.viz import plot_compare_evokeds
 from mne.channels import find_ch_adjacency,make_1020_channel_selections
 from mne.stats import (spatio_temporal_cluster_test, spatio_temporal_cluster_1samp_test,permutation_cluster_test )
 from mne.stats import bonferroni_correction, fdr_correction
+from mne.preprocessing import ICA
+
+import scipy
+
+import os
 
 from scipy import stats
 
@@ -18,6 +23,7 @@ from scipy import stats
 from mne.viz import plot_evoked_topo
 from mne.viz import plot_topomap
 from mne.stats import permutation_t_test,f_threshold_mway_rm
+from mne.preprocessing import create_eog_epochs
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
@@ -96,7 +102,7 @@ def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accep
 	effects = 'A'  # this is the default signature for computing all effects
 	# Other possible options are 'A' or 'B' for the corresponding main effects
 	# or 'A:B' for the interaction effect only
-	pthresh = 0.05  # set threshold rather high to save some time
+	pthresh = 0.01  # set threshold rather high to save some time
 	f_thresh = f_threshold_mway_rm(n_replications,factor_levels,effects,pthresh)
 	del n_conditions, n_replications, factor_levels, effects, pthresh
 	tail = 1  # f-test, so tail > 0
@@ -123,16 +129,21 @@ def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accep
 	for ax, idx in iter_topography(Info_ev,fig_facecolor="white",axis_facecolor="white",axis_spinecolor="white",layout_scale=1,fig=figtopocompare):
 		
 		l, b, w, h = ax.get_position().bounds
-		newpos = [l, b-0.15, w, h]
+# 		newpos = [l, b-0.15, w, h]
+		newpos = [l, b, w, h]
 		ax.set_position(pos=newpos,which='both')
 		
 		ax.plot(Times,evokeds[list(evokeds.keys())[0]].get_data()[idx,:],color=Color1,linewidth = Linewidth1,label=Label1)
 		ax.plot(Times,evokeds[list(evokeds.keys())[1]].get_data()[idx,:],color=Color2,linewidth = Linewidth2,label=Label2)
+
 		ax.set_title(Info_ev['ch_names'][idx],loc='left',fontdict={'fontsize':10})
 		ax.axvline(x=0,linestyle=':',color='k')
 		ax.axhline(y=0,color='k')
+		ax.set_xlim(Times[0]-0.01,np.round(Times[-1]*100)/100)
 		ax.set_ylim(-AmpMax,AmpMax)
 		ax.invert_yaxis()
+		ax.set_xticks(np.arange(0,Times[-1],0.5))
+		ax.set_xticklabels(np.round(np.arange(0,Times[-1],0.5),1), fontsize=6)
 		
 		
 		T_obs, clusters, cluster_p_values, H0 = permutation_cluster_test([X[0][:,:,idx], X[1][:,:,idx]], n_permutations=n_permutations,threshold=threshold, tail=tail, n_jobs=3,out_type='mask',verbose='ERROR')
@@ -145,14 +156,17 @@ def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accep
 		if (idx == Info_ev['nchan']-1):
 			ax.legend(loc=(1,0))
 			
-	legendax = figtopocompare.add_axes([0.97-w,0.05,w,h]) 
-	legendax.set_xlabel('Time (s)',fontsize=10,labelpad=0)
-	legendax.set_ylabel('µV',fontsize=10,labelpad=0)
+# 	legendax = figtopocompare.add_axes([0.97-w,0.05,w,h]) 
+	legendax = figtopocompare.add_axes([0.97-0.85*w,0.97-0.85*h,w*0.85,h*0.85])
+	legendax.plot([Times[0],np.round(Times[-1]*100)/100],np.zeros(2),'w')
+	legendax.set_xlim(Times[0],np.round(Times[-1]*100)/100)
+	legendax.set_xlabel('Time (s)',fontsize=8,labelpad=0)
+	legendax.set_ylabel('µV',fontsize=8,labelpad=0)
 
 	legendax.set_yticks([-AmpMax*1e6,AmpMax*1e6])
-	legendax.set_yticklabels(np.round([-AmpMax*1e6,AmpMax*1e6],1), fontsize=10)
-	legendax.set_xticks(np.arange(Times[0],Times[-1],0.4))
-	legendax.set_xticklabels(np.round(np.arange(Times[0],Times[-1],0.4),1), fontsize=10)
+	legendax.set_yticklabels(np.round([-AmpMax*1e6,AmpMax*1e6],1), fontsize=7)
+	legendax.set_xticks(np.arange(Times[0],(np.round(Times[-1]*100)/100)+0.2,0.2))
+	legendax.set_xticklabels(np.round(np.arange(Times[0],(np.round(Times[-1]*100)/100)+0.2,0.2),1), fontsize=7)
 	legendax.invert_yaxis()
 
 	plt.gcf().suptitle(Title)
@@ -185,6 +199,11 @@ def PlotEvokedDeviationFrom0(X,evokeds,colors_config,styles_config,alpha,Title):
 		ax.axvline(x=0,linestyle=':',color='k')
 		ax.axhline(y=0,color='k')
 		ax.set_ylim(-AmpMax,AmpMax)
+		
+
+		ax.set_xticks(np.arange(0,evokeds.times[-1],0.5))
+		ax.set_xticklabels(np.round(np.arange(0,evokeds.times[-1],0.5),1), fontsize=6)
+		
 		ax.invert_yaxis()
 
 		X_tmp = X[:, idx, :]
@@ -203,13 +222,13 @@ def PlotEvokedDeviationFrom0(X,evokeds,colors_config,styles_config,alpha,Title):
 			ax.legend(loc=(1,0))
 			
 	legendax = figtopo.add_axes([0.97-w,0.05,w,h]) 
-	legendax.set_xlabel('Time (s)',fontsize=10,labelpad=0)
-	legendax.set_ylabel('µV',fontsize=10,labelpad=0)
+	legendax.set_xlabel('Time (s)',fontsize=8.5,labelpad=0)
+	legendax.set_ylabel('µV',fontsize=8.5,labelpad=0)
 
 	legendax.set_yticks([-AmpMax*1e6,AmpMax*1e6])
-	legendax.set_yticklabels(np.round([-AmpMax*1e6,AmpMax*1e6],1), fontsize=10)
-	legendax.set_xticks(np.arange(evokeds.times[0],evokeds.times[-1],0.4))
-	legendax.set_xticklabels(np.round(np.arange(evokeds.times[0],evokeds.times[-1],0.4),1), fontsize=10)
+	legendax.set_yticklabels(np.round([-AmpMax*1e6,AmpMax*1e6],1), fontsize=7)
+	legendax.set_xticks(np.arange(evokeds.times[0],evokeds.times[-1],0.2))
+	legendax.set_xticklabels(np.round(np.arange(evokeds.times[0],evokeds.times[-1],0.2),1), fontsize=7)
 	legendax.invert_yaxis()
 
 	plt.gcf().suptitle(Title)
@@ -325,3 +344,170 @@ def SpatTemp_TFCE_plotCompare(X, colors_config, styles_config,evokeds,p_accept,n
 
 
 
+
+def FitIcaEpoch(raw,events,picks,tmin,tmax,PercentageOfEpochsRejected):
+    # Filter raw data to remove mains and DC offset   
+    iir_Butter_params = dict(order=2, ftype='butter', output='sos')
+    
+    raw_tmp =raw.copy()
+    
+    raw_tmp.filter(l_freq = 0.5, h_freq = 20.,method = 'iir', iir_params=iir_Butter_params,verbose='ERROR')
+    
+    epochs = mne.Epochs(raw_tmp, events=events, event_id=None, tmin=tmin,tmax=tmax, preload=True,proj=True,baseline=None, reject=None, picks=picks,verbose='ERROR')
+    
+    # PercentageOfEpochsRejected = 2.0
+    ThresholdPeak2peak,_,_,_,_ = RejectThresh(epochs,PercentageOfEpochsRejected)
+    
+    reject = {'eeg': ThresholdPeak2peak}    
+    epochs = mne.Epochs(raw_tmp, events=events, event_id=None, tmin=tmin,tmax=tmax, preload=True,proj=True,baseline=None, reject=reject, picks=picks,verbose='ERROR')
+   
+    # Fit ica on epochs without big artifact
+    ica = ICA(n_components=epochs.info['nchan'], method='fastica',random_state = 30).fit(epochs, picks=picks, decim = 10)
+    compo_ica_epoch = ica.get_sources(epochs)
+    return ica,compo_ica_epoch
+    
+    
+    
+def FitIcaRaw(raw, picks,n_components):
+    
+    # Read raw data
+    raw_tmp =raw.copy()
+
+    # Filter raw data to remove mains and DC offset   
+    iir_Butter_params = dict(order=2, ftype='butter', output='sos') 
+    raw_tmp.filter(l_freq = 0.5, h_freq = 20.,method = 'iir', iir_params=iir_Butter_params)       
+    
+    # Fit ica on epochs without big artifact
+    ica = ICA(n_components=n_components, method='fastica',random_state = 30).fit(raw_tmp, picks=picks, decim = 10)
+    return ica
+
+
+
+def ComputeVarICAWeights(ica):
+    fast_dot = np.dot
+    VarIcaWeigths = np.zeros(ica.n_components_, dtype='float')
+    for icomp in range(ica.n_components_):
+        maps = fast_dot(ica.mixing_matrix_[:, icomp].T,ica.pca_components_[:ica.n_components_])
+        mapsNorm=maps/(np.max(np.abs([maps.max(),maps.min()])))
+        VarIcaWeigths[icomp] = np.var(mapsNorm)
+        
+    return VarIcaWeigths
+
+
+def AddVirtualEogChannels(raw,ChanName4VEOG,ChanName4HEOG_l,ChanName4HEOG_r):
+    FlagVEOG = False
+    FlagHEOG_L = False
+    FlagHEOG_R = False
+    FlagHEOG = True 
+    
+    if ChanName4VEOG is not None:               
+        rawSelecChan4Veog  = raw.copy().pick(ChanName4VEOG)
+        rawVEogData = np.zeros((1, rawSelecChan4Veog.n_times), dtype='float')
+        rawVEogData[0,:] = (rawSelecChan4Veog.get_data(picks=range(len(ChanName4VEOG))).sum(axis=0))
+        FlagVEOG = True
+
+     # Create virtual Horizontal EOG
+    if (ChanName4HEOG_l is not None) : 
+        rawSelecChan4Heog_l = raw.copy().pick(ChanName4HEOG_l)
+        rawHEogL_Data = np.zeros((1, rawSelecChan4Heog_l.n_times), dtype='float')
+        rawHEogL_Data[0,:] = (rawSelecChan4Heog_l.get_data(picks=range(len(ChanName4HEOG_l))).sum(axis=0))
+        FlagHEOG_L = True
+        
+        
+    if (ChanName4HEOG_r is not None):
+        rawSelecChan4Heog_r = raw.copy().pick(ChanName4HEOG_r)
+        rawHEogR_Data = np.zeros((1, rawSelecChan4Heog_r.n_times), dtype='float')
+        rawHEogR_Data[0,:] = (rawSelecChan4Heog_r.get_data(picks=range(len(ChanName4HEOG_r))).sum(axis=0))
+        FlagHEOG_R = True
+        
+    if FlagHEOG_L:
+        if FlagHEOG_R:
+            rawHEogData = rawHEogL_Data - rawHEogR_Data
+        else:
+            rawHEogData = rawHEogL_Data
+    else:
+        if FlagHEOG_R:
+            rawHEogData = rawHEogR_Data
+        else:
+            FlagHEOG = False
+    
+    rawWithVirtEOG = raw.copy()
+    if FlagVEOG:
+        infoVEog = mne.create_info(['VEOG'], rawWithVirtEOG.info['sfreq'], ['eog'])
+        VEogRawArray  = mne.io.RawArray(rawVEogData, infoVEog)
+        rawWithVirtEOG.add_channels([VEogRawArray], force_update_info=True)
+            
+    if FlagHEOG:
+        infoHEog = mne.create_info(['HEOG'], rawWithVirtEOG.info['sfreq'], ['eog'])
+        HEogRawArray  = mne.io.RawArray(rawHEogData, infoHEog)
+        rawWithVirtEOG.add_channels([HEogRawArray], force_update_info=True)
+    
+    return rawWithVirtEOG,FlagVEOG,FlagHEOG
+
+
+def VirtualEog(raw, ica, fig_directory,events, ChanName4VEOG, ChanName4HEOG_l,ChanName4HEOG_r):
+	rawWithVirtEOG,FlagVEOG,FlagHEOG = AddVirtualEogChannels(raw,ChanName4VEOG,ChanName4HEOG_l,ChanName4HEOG_r)
+	picks_eeg = mne.pick_types(rawWithVirtEOG.info, meg=False, eeg=True, eog=True,stim=True, exclude='bads')
+	iir_Butter_params = dict(order=2, ftype='butter', output='sos')
+	rawWithVirtEOG.filter(l_freq = 0.1, h_freq = 20.,method = 'iir', iir_params=iir_Butter_params,picks=picks_eeg)
+	dict_scaling=dict(eeg=100e-6)
+# 	rawWithVirtEOG.plot(duration=20,n_channels=rawWithVirtEOG.info['nchan'],scalings=dict_scaling)
+	
+	# Epoch filtered data on stimuli of interest
+	tmin, tmax = -0.5, 1
+	epochs = mne.Epochs(rawWithVirtEOG, events=events, event_id=None, tmin=tmin,tmax=tmax, preload=True,proj=True,baseline=None, reject=None, picks=picks_eeg)
+	PercentageOfEpochsRejected = 2.0
+	ThresholdPeak2peak,_,_,_,_ = RejectThresh(epochs,PercentageOfEpochsRejected)
+	reject = {'eeg': ThresholdPeak2peak}
+	
+	Veog_inds=[]
+	Heog_inds=[]
+	head_tail = os.path.split(raw.filenames[0])
+	raw_f = os.path.splitext(head_tail[1])[0]
+	if FlagVEOG:
+		Veog_inds, Veog_scores = ica.find_bads_eog(rawWithVirtEOG,ch_name ='VEOG',stop = rawWithVirtEOG.times[-1]-1)
+	if FlagHEOG:
+		Heog_inds, Heog_scores = ica.find_bads_eog(rawWithVirtEOG,ch_name ='HEOG',stop = rawWithVirtEOG.times[-1]-1)
+	if not(not(Veog_inds) and not(Heog_inds)):
+		ica.plot_sources(rawWithVirtEOG,picks= Veog_inds+Heog_inds,stop  =30 )
+		if len(fig_directory)>0:
+			fnamesavefigICAcomponents = fig_directory + raw_f + "-icacomp.jpg"
+			plt.savefig(fnamesavefigICAcomponents)
+	
+	ica.plot_scores(Veog_scores, exclude=Veog_inds)  # look at r scores of components
+	plt.show()
+	if len(fig_directory)>0:
+		fnamesavefigIcaScoreVEOG = fig_directory + raw_f + "-icascoreVeog.jpg"
+		plt.savefig(fnamesavefigIcaScoreVEOG)
+	
+	
+	ica.plot_scores(Heog_scores, exclude=Heog_inds)  # look at r scores of components
+	
+	if len(fig_directory)>0:
+		fnamesavefigIcaScoreHEOG = fig_directory + raw_f + "-icascoreHeog.jpg"
+		plt.savefig(fnamesavefigIcaScoreHEOG)
+		
+	if not(not(Veog_inds) and not(Heog_inds)):
+		eog_inds = Veog_inds + Heog_inds
+		ica.plot_components(eog_inds,ch_type='eeg')
+		
+		if len(fig_directory)>0:
+			fnamesavefigICATopocomponents = fig_directory + raw_f + "-icatopo.jpg"
+			plt.savefig(fnamesavefigICATopocomponents)
+	
+	if FlagVEOG:
+		if FlagHEOG:
+			IcaScore2save = {'Veog_scores': Veog_scores[Veog_inds], 'Veog_inds' :Veog_inds,  'Heog_scores': Heog_scores[Heog_inds], 'Heog_inds' :Heog_inds}
+		else:
+			IcaScore2save = {'Veog_scores': Veog_scores[Veog_inds], 'Veog_inds' :Veog_inds}
+	else:
+		if FlagHEOG:
+			IcaScore2save = {'Heog_scores': Heog_scores[Heog_inds], 'Heog_inds' :Heog_inds}
+		else:
+			IcaScore2save=[]
+	IcaWeightsVar2save = {'LogVarIcWeights' : np.log(ComputeVarICAWeights(ica))}
+	if not(not(Veog_inds) and not(Heog_inds)):
+		ica.exclude.extend(eog_inds)
+	return ica,IcaWeightsVar2save,IcaScore2save
+    
+   

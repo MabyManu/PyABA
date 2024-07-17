@@ -56,6 +56,7 @@ def ComputeFeature_GazeEpoch(Gaze_data,Times_epoch, SampFreq, Target_Pix_RefCros
 	NbSampFix = 0
 	PercentNanInFixPeriod = np.nan
 	FixPeriod_GazePosition = np.nan
+	FixPeriod_GazePosition_Std = np.nan
 	FixPeriod_GainAmp = np.nan
 	FixPeriod_GainAUC = np.nan
 	GainAUC_TargetDisplayPeriod = np.nan
@@ -152,6 +153,7 @@ def ComputeFeature_GazeEpoch(Gaze_data,Times_epoch, SampFreq, Target_Pix_RefCros
 	if (NbSampFix>0):
 		PercentNanInFixPeriod = NbNan/NbSampFix
 		FixPeriod_GazePosition = np.nanmedian(AllFixData)
+		FixPeriod_GazePosition_Std = np.nanstd(AllFixData)
 		FixPeriod_GainAmp = (FixPeriod_GazePosition-Fix_Baseline[3])/Target_Pix_RefCross
 		
 		AUC = np.nansum(AllFixData-Fix_Baseline[3])
@@ -169,6 +171,7 @@ def ComputeFeature_GazeEpoch(Gaze_data,Times_epoch, SampFreq, Target_Pix_RefCros
                'FixationOnTarget_PercentOfNan': PercentNanInFixPeriod,
 			   'FixationOnTarget_GazePosition': FixPeriod_GazePosition,
 			   'FixationOnTarget_AmplitudeGain' : FixPeriod_GainAmp,	
+			   'FixationOnTarget_FixationStability' : FixPeriod_GazePosition_Std*Pix2DegCoeff,
 			   'FixationOnTarget_AUCGain' : FixPeriod_GainAUC,
 			   'TargetDisplayPeriod_AUCGain' : GainAUC_TargetDisplayPeriod}	
     
@@ -212,6 +215,12 @@ def PlotFixationGaze_STEP(DATA, Times_epoch, SampFreq, TargetName, Target_PixPos
 	FixationOnTarget_AmplitudeGain_RightEye   = np.empty(NbTrials)
 	FixationOnTarget_AmplitudeGain_RightEye[:] = np.nan	
 	
+	FixationOnTarget_VariabilityOfFixation_LeftEye   = np.empty(NbTrials)
+	FixationOnTarget_VariabilityOfFixation_LeftEye[:] = np.nan		
+	
+	FixationOnTarget_VariabilityOfFixation_RightEye   = np.empty(NbTrials)
+	FixationOnTarget_VariabilityOfFixation_RightEye[:] = np.nan		
+	
 	LE_X = DATA[:,0,:]
 	LE_Y = DATA[:,1,:]
 	RE_X = DATA[:,2,:]
@@ -237,7 +246,6 @@ def PlotFixationGaze_STEP(DATA, Times_epoch, SampFreq, TargetName, Target_PixPos
 	Target_Pos_Px = Cross_pos + Target_Pix_RefCross
 	
 	fig_curr  =plt.figure()
-# 	fig_curr.set_size_inches(19, 9)
 	for i_trials in range(NbTrials):   # LOOP ON TRIALS
 		LE_Data_curr = LE_Data[i_trials,:]
 		RE_Data_curr = RE_Data[i_trials,:]
@@ -260,19 +268,20 @@ def PlotFixationGaze_STEP(DATA, Times_epoch, SampFreq, TargetName, Target_PixPos
 		Baseline_Latencies_LeftEye =  Results_LeftEye['GazeBaseline_Latencies']
 		FixationOnTarget_AmplitudeGain_LeftEye[i_trials] =  np.log(Results_LeftEye['FixationOnTarget_AmplitudeGain'])
 		EpochMissingDataPerCent_LeftEye[i_trials] = len(np.where(np.isnan(LE_Data_curr))[0])/len(LE_Data_curr)
+		FixationOnTarget_VariabilityOfFixation_LeftEye[i_trials] = Results_LeftEye['FixationOnTarget_FixationStability']
 		
-		(Results_LeftEye['FixationOnTarget_GazePosition']-Cross_pos)*Pix2DegCoeff
 		
 		# Display Left Eye
 		
 		ax.axvline(Latency_InitSacc_LeftEye[i_trials]/SampFreq,0,1,linestyle='dotted',color = 'firebrick',linewidth=2.5)
 		ax.axvspan(Baseline_Latencies_LeftEye[0]/SampFreq,Baseline_Latencies_LeftEye[1]/SampFreq,color='k',alpha=0.3)
-		ax.text(0.5,-1*SignTarget*4.5,'Init Lat LE : ' + str(Latency_InitSacc_LeftEye[i_trials]) + ' ms',fontsize=6,color='firebrick')
+		ax.text(0.5,-1*SignTarget*4,'Init Lat LE : ' + str(Latency_InitSacc_LeftEye[i_trials]) + ' ms',fontsize=6,color='firebrick')
 		
 		for ifix in range(len(Fix_OnTarget_LatStart)):
 			ax.axvspan(Fix_OnTarget_LatStart[ifix]/SampFreq,Fix_OnTarget_LatEnd[ifix]/SampFreq,color='r',alpha=0.2)
-		ax.text(0.5,-1*SignTarget*18.5,'Targ Fix Dur : ' + f"{FixDurationOnTarget_LeftEye[i_trials]:.0f}" + ' ms',fontsize=6,color = 'firebrick')
-		ax.text(0.5,-1*SignTarget*11.5,'log(AmpGain) : ' + f"{FixationOnTarget_AmplitudeGain_LeftEye[i_trials]:.3f}" ,fontsize=6,color = 'firebrick')
+		ax.text(0.5,-1*SignTarget*10,'log(AmpGain) : ' + f"{FixationOnTarget_AmplitudeGain_LeftEye[i_trials]:.3f}" ,fontsize=6,color = 'firebrick')
+		ax.text(0.5,-1*SignTarget*16,'Targ Fix Dur : ' + f"{FixDurationOnTarget_LeftEye[i_trials]:.0f}" + ' ms',fontsize=6,color = 'firebrick')
+		ax.text(0.5,-1*SignTarget*22,'Var Fix  : ' + f"{FixationOnTarget_VariabilityOfFixation_LeftEye[i_trials]:.3f}" + ' °',fontsize=6,color = 'firebrick')
 		
 		
 		# Process Right Eye
@@ -285,7 +294,8 @@ def PlotFixationGaze_STEP(DATA, Times_epoch, SampFreq, TargetName, Target_PixPos
 		Baseline_Latencies_RightEye =  Results_RightEye['GazeBaseline_Latencies']
 		FixationOnTarget_AmplitudeGain_RightEye[i_trials] = np.log(Results_RightEye['FixationOnTarget_AmplitudeGain'])
 		EpochMissingDataPerCent_RightEye[i_trials] = len(np.where(np.isnan(RE_Data_curr))[0])/len(RE_Data_curr)
-		
+		FixationOnTarget_VariabilityOfFixation_RightEye[i_trials] = Results_RightEye['FixationOnTarget_FixationStability']
+
 		
 		
 		# Display Right Eye
@@ -296,8 +306,9 @@ def PlotFixationGaze_STEP(DATA, Times_epoch, SampFreq, TargetName, Target_PixPos
 		
 		for ifix in range(len(Fix_OnTarget_LatStart)):
 			ax.axvspan(Fix_OnTarget_LatStart[ifix]/SampFreq,Fix_OnTarget_LatEnd[ifix]/SampFreq,color='g',alpha=0.2)
-		ax.text(0.5,-1*SignTarget*15,'Targ Fix Dur : ' + f"{FixDurationOnTarget_RightEye[i_trials]:.0f}" + ' ms',fontsize=6,color = 'darkgreen')
-		ax.text(0.5,-1*SignTarget*8,'log(AmpGain) : ' + f"{FixationOnTarget_AmplitudeGain_RightEye[i_trials]:.3f}" ,fontsize=6,color = 'darkgreen')
+		ax.text(0.5,-1*SignTarget*7,'log(AmpGain) : ' + f"{FixationOnTarget_AmplitudeGain_RightEye[i_trials]:.3f}" ,fontsize=6,color = 'darkgreen')
+		ax.text(0.5,-1*SignTarget*13,'Targ Fix Dur : ' + f"{FixDurationOnTarget_RightEye[i_trials]:.0f}" + ' ms',fontsize=6,color = 'darkgreen')
+		ax.text(0.5,-1*SignTarget*19,'Var Fix : ' + f"{FixationOnTarget_VariabilityOfFixation_RightEye[i_trials]:.3f}" + ' °',fontsize=6,color = 'darkgreen')
 		ax.set_xlabel('Time (s)',fontsize=6)            
 		ax.set_ylabel('Eye Position (°)',fontsize=6)  
 		ax.yaxis.set_tick_params(labelsize=6)
@@ -321,8 +332,162 @@ def PlotFixationGaze_STEP(DATA, Times_epoch, SampFreq, TargetName, Target_PixPos
 			 'LogAmpGain_LeftEye':FixationOnTarget_AmplitudeGain_LeftEye,
 			 'LogAmpGain_RightEye':FixationOnTarget_AmplitudeGain_RightEye,
 			 'FixationDurationOnTarget_LeftEye':FixDurationOnTarget_LeftEye,
-			 'FixationDurationOnTarget_RightEye':FixDurationOnTarget_RightEye}
+			 'FixationDurationOnTarget_RightEye':FixDurationOnTarget_RightEye,
+ 			 'VariabilityOfFixation_LeftEye':FixationOnTarget_VariabilityOfFixation_LeftEye,
+			 'VariabilityOfFixation_RightEye':FixationOnTarget_VariabilityOfFixation_RightEye,
+			 'MissingDataPercent_LeftEye' : EpochMissingDataPerCent_LeftEye,
+			 'MissingDataPercent_RightEye' : EpochMissingDataPerCent_RightEye}
 
+
+
+def Plot_MeanGaze_STEP(List_Epoch,List_Target_PixPosition,TargetFixationDuration, Cross_PixPosition,Pix2DegCoeff,SaccAmp_Min_Deg):
+	MaxVelocitySaccade = 400
+	MaxDistFixation_deg = 2
+	
+	NbCond = len(List_Epoch)
+	
+	Latency_InitSacc_LeftEye   = np.empty(NbCond)
+	Latency_InitSacc_LeftEye[:] = np.nan
+	Latency_InitSacc_RightEye  = np.empty(NbCond)
+	Latency_InitSacc_RightEye[:] = np.nan
+	
+	LogAmpGain_LeftEye   = np.empty(NbCond)
+	LogAmpGain_LeftEye[:] = np.nan
+	LogAmpGain_RightEye   = np.empty(NbCond)
+	LogAmpGain_RightEye[:] = np.nan
+	
+	FixationDurationOnTarget_LeftEye   = np.empty(NbCond)
+	FixationDurationOnTarget_LeftEye[:] = np.nan
+	FixationDurationOnTarget_RightEye   = np.empty(NbCond)
+	FixationDurationOnTarget_RightEye[:] = np.nan
+	
+	VariabilityOfFixation_LeftEye   = np.empty(NbCond)
+	VariabilityOfFixation_LeftEye[:] = np.nan
+	VariabilityOfFixation_RightEye   = np.empty(NbCond)
+	VariabilityOfFixation_RightEye[:] = np.nan
+	
+	EpochMissingDataPerCent_LeftEye  = np.empty(NbCond)
+	EpochMissingDataPerCent_LeftEye[:] = np.nan
+	EpochMissingDataPerCent_RightEye  = np.empty(NbCond)
+	EpochMissingDataPerCent_RightEye[:] = np.nan
+	
+	NbCol = int(np.ceil(np.sqrt(NbCond)))
+	NbRow = int(np.ceil(NbCond/NbCol))
+	fig_MeanGaze  = plt.figure()
+
+	for i_cond in range(NbCond):
+		Epoch_curr = List_Epoch[i_cond]
+		Target_PixPosition = List_Target_PixPosition[i_cond]
+		Times_epoch = Epoch_curr.times
+		SampFreq = Epoch_curr.info['sfreq']
+		LE_X = np.nanmean(Epoch_curr.get_data(copy=True)[:,0,:],axis=0)
+		LE_Y = np.nanmean(Epoch_curr.get_data(copy=True)[:,1,:],axis=0)
+		RE_X = np.nanmean(Epoch_curr.get_data(copy=True)[:,2,:],axis=0)
+		RE_Y = np.nanmean(Epoch_curr.get_data(copy=True)[:,3,:],axis=0)
+		
+		if (Target_PixPosition[1] == 0):
+			Target_Pix_RefCross = Target_PixPosition[0]
+			LE_Data = LE_X
+			RE_Data = RE_X
+			Cross_pos = Cross_PixPosition[0]
+		else:
+			Target_Pix_RefCross = Target_PixPosition[1]
+			LE_Data = LE_Y
+			RE_Data = RE_Y
+			Cross_pos = Cross_PixPosition[1]
+		
+		Target_Sig = np.zeros(len(Times_epoch))
+		Target_Sig[np.where((Times_epoch>0) & (Times_epoch<TargetFixationDuration))[0]] = Target_Pix_RefCross*Pix2DegCoeff
+		SignTarget = Target_Pix_RefCross/(np.abs(Target_Pix_RefCross))
+		Target_Pos_Px = Cross_pos + Target_Pix_RefCross
+		
+		ax = plt.subplot(NbRow, NbCol, i_cond + 1)
+		ax.plot(Times_epoch,(LE_Data-Cross_pos)*Pix2DegCoeff,'r',linewidth=1)
+		ax.plot(Times_epoch,(RE_Data-Cross_pos)*Pix2DegCoeff,'g',linewidth=1)
+		ax.plot(Times_epoch,Target_Sig,'b',linewidth=1.5,linestyle='dotted')
+		ax.set_ylim(bottom=-25, top=25)
+		
+		# Process Left Eye
+		Results_LeftEye = ComputeFeature_GazeEpoch(LE_Data,Times_epoch, SampFreq, Target_Pix_RefCross,TargetFixationDuration, Target_Pos_Px, Cross_pos, Pix2DegCoeff,SaccAmp_Min_Deg,MaxVelocitySaccade,MaxDistFixation_deg)
+		
+		Latency_InitSacc_LeftEye[i_cond] = Results_LeftEye['InitSaccade_Latency']
+		FixationDurationOnTarget_LeftEye[i_cond]= Results_LeftEye['FixationOnTarget_Duration']
+		Fix_OnTarget_LatStart = Results_LeftEye['FixationOnTarget_StartLatency']
+		Fix_OnTarget_LatEnd = Results_LeftEye['FixationOnTarget_EndLatency']
+		Baseline_Latencies_LeftEye =  Results_LeftEye['GazeBaseline_Latencies']
+		LogAmpGain_LeftEye[i_cond]=  np.log(Results_LeftEye['FixationOnTarget_AmplitudeGain'])
+		EpochMissingDataPerCent_LeftEye[i_cond]= len(np.where(np.isnan(LE_Data))[0])/len(LE_Data)
+		VariabilityOfFixation_LeftEye[i_cond] = Results_LeftEye['FixationOnTarget_FixationStability']
+		
+		
+		# Display Left Eye		
+		ax.axvline(Latency_InitSacc_LeftEye[i_cond]/SampFreq,0,1,linestyle='dotted',color = 'firebrick',linewidth=2.5)
+		ax.axvspan(Baseline_Latencies_LeftEye[0]/SampFreq,Baseline_Latencies_LeftEye[1]/SampFreq,color='k',alpha=0.3)
+		ax.text(0.5,-1*SignTarget*4,'Init Lat LE : ' + str(Latency_InitSacc_LeftEye[i_cond]) + ' ms',fontsize=6,color='firebrick')
+		
+		for ifix in range(len(Fix_OnTarget_LatStart)):
+			ax.axvspan(Fix_OnTarget_LatStart[ifix]/SampFreq,Fix_OnTarget_LatEnd[ifix]/SampFreq,color='r',alpha=0.2)
+		ax.text(0.5,-1*SignTarget*10,'log(AmpGain) : ' + f"{LogAmpGain_LeftEye[i_cond]:.3f}" ,fontsize=6,color = 'firebrick')
+		ax.text(0.5,-1*SignTarget*16,'Targ Fix Dur : ' + f"{FixationDurationOnTarget_LeftEye[i_cond]:.0f}" + ' ms',fontsize=6,color = 'firebrick')
+		ax.text(0.5,-1*SignTarget*22,'Var Fix  : ' + f"{VariabilityOfFixation_LeftEye[i_cond]:.3f}" + ' °',fontsize=6,color = 'firebrick')
+
+		
+		# Process Right Eye
+		Results_RightEye = ComputeFeature_GazeEpoch(RE_Data,Times_epoch, SampFreq, Target_Pix_RefCross,TargetFixationDuration, Target_Pos_Px, Cross_pos, Pix2DegCoeff,SaccAmp_Min_Deg,MaxVelocitySaccade,MaxDistFixation_deg)
+		
+		Latency_InitSacc_RightEye[i_cond] = Results_RightEye['InitSaccade_Latency']
+		FixationDurationOnTarget_RightEye[i_cond] = Results_RightEye['FixationOnTarget_Duration']
+		Fix_OnTarget_LatStart = Results_RightEye['FixationOnTarget_StartLatency']
+		Fix_OnTarget_LatEnd = Results_RightEye['FixationOnTarget_EndLatency']
+		Baseline_Latencies_RightEye =  Results_RightEye['GazeBaseline_Latencies']
+		LogAmpGain_RightEye[i_cond] = np.log(Results_RightEye['FixationOnTarget_AmplitudeGain'])
+		EpochMissingDataPerCent_RightEye[i_cond] = len(np.where(np.isnan(RE_Data))[0])/len(RE_Data)
+		VariabilityOfFixation_RightEye[i_cond] = Results_RightEye['FixationOnTarget_FixationStability']
+		
+		
+		# Display Right Eye
+		
+		ax.axvline(Latency_InitSacc_RightEye[i_cond]/SampFreq,0,1,linestyle='dotted',color = 'darkgreen',linewidth=2.5)
+		ax.axvspan(Baseline_Latencies_RightEye[0]/SampFreq,Baseline_Latencies_RightEye[1]/SampFreq,color='k',alpha=0.3)
+		ax.text(0.5,-1*SignTarget*1,'Init Lat : ' + str(Latency_InitSacc_RightEye[i_cond]) + ' ms',fontsize=6,color='darkgreen')
+		
+		for ifix in range(len(Fix_OnTarget_LatStart)):
+			ax.axvspan(Fix_OnTarget_LatStart[ifix]/SampFreq,Fix_OnTarget_LatEnd[ifix]/SampFreq,color='g',alpha=0.2)
+		ax.text(0.5,-1*SignTarget*7,'log(AmpGain) : ' + f"{LogAmpGain_RightEye[i_cond]:.3f}" ,fontsize=6,color = 'darkgreen')
+		ax.text(0.5,-1*SignTarget*13,'Targ Fix Dur : ' + f"{FixationDurationOnTarget_RightEye[i_cond]:.0f}" + ' ms',fontsize=6,color = 'darkgreen')
+		ax.text(0.5,-1*SignTarget*19,'Var Fix : ' + f"{VariabilityOfFixation_RightEye[i_cond]:.3f}" + ' °',fontsize=6,color = 'darkgreen')
+
+		ax.set_xlabel('Time (s)',fontsize=6)            
+		ax.set_ylabel('Eye Position (°)',fontsize=6)  
+		ax.yaxis.set_tick_params(labelsize=6)
+		ax.xaxis.set_tick_params(labelsize=6)
+		if (SignTarget<0):
+			ax.legend(['Left Eye', 'Right Eye','Target'],fontsize=6,loc='lower left')
+		else:
+		   ax.legend(['Left Eye', 'Right Eye','Target'],fontsize=6,loc='upper left')
+		TargetName = list(Epoch_curr.event_id.keys())[0]
+		
+		ax.set_title(TargetName)
+	plt.show()
+		
+	return { 'FigureObject' : fig_MeanGaze,
+				 'Latency_InitSacc_LeftEye':Latency_InitSacc_LeftEye,
+				 'Latency_InitSacc_RightEye':Latency_InitSacc_RightEye,
+				 'LogAmpGain_LeftEye':LogAmpGain_LeftEye,
+				 'LogAmpGain_RightEye':LogAmpGain_RightEye,
+				 'FixationDurationOnTarget_LeftEye':FixationDurationOnTarget_LeftEye,
+				 'FixationDurationOnTarget_RightEye':FixationDurationOnTarget_RightEye,
+				 'VariabilityOfFixation_LeftEye':VariabilityOfFixation_LeftEye,
+				 'VariabilityOfFixation_RightEye':VariabilityOfFixation_RightEye,
+				 'MissingDataPercent_LeftEye' : EpochMissingDataPerCent_LeftEye,
+				 'MissingDataPercent_RightEye' : EpochMissingDataPerCent_RightEye}
+		
+		
+		
+		
+	
+	
+	
 
 def PlotFixationOnCross(Kind_VisAtt, EyeName, TabAttSide,NbBlocks,ListGaze_X,ListGaze_Y,SampFreq,ScreenResolution_Width,ScreenResolution_Height,Cross_X,Cross_Y,Cross_Area_X,Cross_Area_Y):
 	Percentage_FixationCross = np.zeros(NbBlocks)

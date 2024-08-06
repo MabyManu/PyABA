@@ -130,7 +130,7 @@ def PermutCluster_plotCompare(X, colors_config , styles_config  ,evokeds,p_accep
 		
 		l, b, w, h = ax.get_position().bounds
 # 		newpos = [l, b-0.15, w, h]
-		newpos = [l, b, w, h]
+		newpos = [l, b-0.02, w, h]
 		ax.set_position(pos=newpos,which='both')
 		
 		ax.plot(Times,evokeds[list(evokeds.keys())[0]].get_data()[idx,:],color=Color1,linewidth = Linewidth1,label=Label1)

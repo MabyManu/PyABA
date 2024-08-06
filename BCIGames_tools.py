@@ -80,7 +80,21 @@ def ReadJsonData_BR(JsonFileName):
 	Data_epo_Raw_NoTarget = np.array(Data_epo_Raw_NoTarget)
 	ListEvt_Target = np.array(ListEvt_Target) 	
 	ListEvt_NoTarget = np.array(ListEvt_NoTarget) 	
-	return Data_epo_Target,	Data_epo_NoTarget, Data_epo_Raw_Target,Data_epo_Raw_NoTarget,SamplingFrequency,ListEvt_Target,ListEvt_NoTarget
+	
+# 	EEG_data = []
+# 	PosixTime_EEG = []
+# 	Arduino_EEG = []
+# 	
+# 	for i_sample in range(len(data_dict['EEGSample']['Values'])):
+# 		EEGSample_curr = data_dict['EEGSample']['Values'][i_sample]['Sample']
+# 		EEG_data.append(EEGSample_curr)
+# 		PosixTime_EEG.append(data_dict['EEGSample']['Values'][i_sample]['Time'])
+# 		Arduino_EEG.append(data_dict['EEGSample']['Values'][i_sample]['ArduinoTime'])
+# 	
+# 	EEG_data = np.array(EEG_data)
+# 	PosixTime_EEG =  np.array(PosixTime_EEG)
+# 	Arduino_EEG =  np.array(Arduino_EEG)
+	return Data_epo_Target,	Data_epo_NoTarget, Data_epo_Raw_Target,Data_epo_Raw_NoTarget,SamplingFrequency,ListEvt_Target,ListEvt_NoTarget#,EEG_data,PosixTime_EEG,Arduino_EEG
 
 def ReadCalib_JsonFile_BrainReality(JsonFileName):
 	with open(JsonFileName) as json_data:

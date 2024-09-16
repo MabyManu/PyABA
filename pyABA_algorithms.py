@@ -85,50 +85,63 @@ def Xdawn(raw, events_id, tmin_time_window_s, tmax_time_window_s, nb_spatial_fil
 
 #_______________________________________________________________________________
 def NBlearn(targets_features,no_targets_features):
+	"""
+	%% linear Naive BaStim1 classifier (learning phase)
+	%
+	% INPUTS:
+	% - X       matrix of features ([P x N])
+	% - L       vector of Labels   ([P x 1])
+	% - opt     1:default prior probabilities (1/6 5/6) 0:computed
+	%
+	% OUTPUTS:
+	% - m1      mean vector for class 1 ([N x 1])
+	% - v1      variance vector for class 1
+	% - t1      log-term for class 1 (depends on the prior probability and variance)
+	% - m2
+	% - v2
+	% - t2
+	%
+	"""
+	nb_target_features, nb_samples_target_features = targets_features.shape
+	nb_NO_target_features, nb_samples_NO_target_features = no_targets_features.shape
+	nb_total_features = nb_target_features + nb_NO_target_features
+	
+	m1 = np.nanmean(no_targets_features,axis=0)
+	V1 = (no_targets_features - m1) ** 2
+	p1 = float(nb_NO_target_features) / nb_total_features
 
-    """
-    %% linear Naive BaStim1 classifier (learning phase)
-    %
-    % INPUTS:
-    % - X       matrix of features ([P x N])
-    % - L       vector of Labels   ([P x 1])
-    % - opt     1:default prior probabilities (1/6 5/6) 0:computed
-    %
-    % OUTPUTS:
-    % - m1      mean vector for class 1 ([N x 1])
-    % - v1      variance vector for class 1
-    % - t1      log-term for class 1 (depends on the prior probability and variance)
-    % - m2
-    % - v2
-    % - t2
-    %
-    """
+	
+	
+	if (nb_NO_target_features>1):
+		v1 = np.nansum(V1,axis=0) / float(nb_NO_target_features - 1)
+		t1 = np.log(p1) - np.sum(np.log(np.sqrt(v1)))
 
+	else:
+		v1 = np.nansum(V1,axis=0)
+		t1 = np.log(p1)
 
-    nb_target_features, nb_samples_target_features = targets_features.shape
-    nb_NO_target_features, nb_samples_NO_target_features = no_targets_features.shape
-    nb_total_features = nb_target_features + nb_NO_target_features
+	
+	m2 = np.nanmean(targets_features,axis=0)
+	V2 = (targets_features - m2) ** 2
+	p2  = 1 - p1
 
-    m1 = np.nanmean(no_targets_features,axis=0)
-    V1 = (no_targets_features - m1) ** 2
-    v1 = np.nansum(V1,axis=0) / float(nb_NO_target_features - 1)
-    p1 = float(nb_NO_target_features) / nb_total_features
-    t1 = np.log(p1) - np.sum(np.log(np.sqrt(v1)))
+	if (nb_target_features>1):
+		v2 = np.nansum(V2,axis=0)  / float(nb_target_features - 1)
+		t2  = np.log(p2) - np.sum(np.log(np.sqrt(v2)))
 
-    m2 = np.nanmean(targets_features,axis=0)
-    V2 = (targets_features - m2) ** 2
-    v2 = np.nansum(V2,axis=0)  / float(nb_target_features - 1)
-    p2  = 1 - p1
-    t2  = np.log(p2) - np.sum(np.log(np.sqrt(v2)))
+	else:
+		v2 = np.nansum(V2,axis=0)		
+		t2  = np.log(p2)
 
-    return {
-        'm1': m1,
-        'v1': v1,
-        't1': t1,
-        'm2': m2,
-        'v2': v2,
-        't2': t2
-    }
+	
+	return {
+		'm1': m1,
+		'v1': v1,
+		't1': t1,
+		'm2': m2,
+		'v2': v2,
+		't2': t2
+	}
 
 
 

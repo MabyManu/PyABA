@@ -23,6 +23,7 @@ from scipy.linalg import eigvalsh
 import mne_tools
 import os
 import json
+import matplotlib.pyplot as plt
 
 from PyQt5.QtWidgets import QFileDialog,QListView,QAbstractItemView,QTreeView
 
@@ -767,3 +768,54 @@ def ReadTemplate_H5(Template_H5Filename):
             
     return TemplateParams
         
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """ Special json encoder for numpy types """
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+	
+	
+	
+	
+	
+def remove_outliers(data,Pct_Percentile,Factor_bound):
+    # Calcul des quartiles
+    Q1 = np.percentile(data, Pct_Percentile)
+    Q3 = np.percentile(data, 100-Pct_Percentile)
+    IQR = Q3 - Q1
+    
+    # Définir les bornes inférieure et supérieure
+    lower_bound = Q1 - Factor_bound * IQR
+    upper_bound = Q3 + Factor_bound * IQR
+    
+    # Filtrer les outliers
+    filtered_data = [x for x in data if lower_bound <= x <= upper_bound]
+    
+    return filtered_data	
+	
+
+
+def plot_phases_on_circle(phases):
+	"""
+	Trace les phases respiratoires sur un cercle.
+	Args:
+		phases (array): Phases respiratoires en termes d'angle.
+    """
+	# Convertir les phases en radians pour l'affichage en coordonnées polaires
+	radians = np.deg2rad(phases)
+	# Tracer les phases sur un cercle
+	plt.figure(figsize=(6, 6))
+	ax = plt.subplot(111, polar=True)
+	ax.scatter(radians, np.ones_like(radians), s=7, color='blue')
+	ax.set_yticklabels([])  # Masquer les labels du rayon
+	ax.set_theta_zero_location("E")  # 0° en haut (au nord)
+	ax.set_theta_direction(1)  # Sens des aiguilles d'une montre 
+	plt.title('Respiration phases synchronized with stimuli')
+	plt.show()

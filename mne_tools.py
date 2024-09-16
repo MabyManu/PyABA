@@ -445,43 +445,38 @@ def AddVirtualEogChannels(raw,ChanName4VEOG,ChanName4HEOG_l,ChanName4HEOG_r):
     return rawWithVirtEOG,FlagVEOG,FlagHEOG
 
 
-def VirtualEog(raw, ica, fig_directory,events, ChanName4VEOG, ChanName4HEOG_l,ChanName4HEOG_r):
+def VirtualEog(raw, ica, fig_directory, ChanName4VEOG, ChanName4HEOG_l,ChanName4HEOG_r,threshold):
 	rawWithVirtEOG,FlagVEOG,FlagHEOG = AddVirtualEogChannels(raw,ChanName4VEOG,ChanName4HEOG_l,ChanName4HEOG_r)
 	picks_eeg = mne.pick_types(rawWithVirtEOG.info, meg=False, eeg=True, eog=True,stim=True, exclude='bads')
 	iir_Butter_params = dict(order=2, ftype='butter', output='sos')
-	rawWithVirtEOG.filter(l_freq = 0.1, h_freq = 20.,method = 'iir', iir_params=iir_Butter_params,picks=picks_eeg)
+	rawWithVirtEOG.filter(l_freq = 0.1, h_freq = 15.,method = 'iir', iir_params=iir_Butter_params,picks=picks_eeg)
 	dict_scaling=dict(eeg=100e-6)
 # 	rawWithVirtEOG.plot(duration=20,n_channels=rawWithVirtEOG.info['nchan'],scalings=dict_scaling)
 	
-	# Epoch filtered data on stimuli of interest
-	tmin, tmax = -0.5, 1
-	epochs = mne.Epochs(rawWithVirtEOG, events=events, event_id=None, tmin=tmin,tmax=tmax, preload=True,proj=True,baseline=None, reject=None, picks=picks_eeg)
-	PercentageOfEpochsRejected = 2.0
-	ThresholdPeak2peak,_,_,_,_ = RejectThresh(epochs,PercentageOfEpochsRejected)
-	reject = {'eeg': ThresholdPeak2peak}
 	
 	Veog_inds=[]
 	Heog_inds=[]
 	head_tail = os.path.split(raw.filenames[0])
 	raw_f = os.path.splitext(head_tail[1])[0]
 	if FlagVEOG:
-		Veog_inds, Veog_scores = ica.find_bads_eog(rawWithVirtEOG,ch_name ='VEOG',stop = rawWithVirtEOG.times[-1]-1)
+		Veog_inds, Veog_scores = ica.find_bads_eog(rawWithVirtEOG,ch_name ='VEOG',stop = rawWithVirtEOG.times[-1]-1,threshold=threshold,measure='correlation')
 	if FlagHEOG:
-		Heog_inds, Heog_scores = ica.find_bads_eog(rawWithVirtEOG,ch_name ='HEOG',stop = rawWithVirtEOG.times[-1]-1)
+		Heog_inds, Heog_scores = ica.find_bads_eog(rawWithVirtEOG,ch_name ='HEOG',stop = rawWithVirtEOG.times[-1]-1,threshold=threshold,measure='correlation')
 	if not(not(Veog_inds) and not(Heog_inds)):
 		ica.plot_sources(rawWithVirtEOG,picks= Veog_inds+Heog_inds,stop  =30 )
 		if len(fig_directory)>0:
 			fnamesavefigICAcomponents = fig_directory + raw_f + "-icacomp.jpg"
 			plt.savefig(fnamesavefigICAcomponents)
 	
-	ica.plot_scores(Veog_scores, exclude=Veog_inds)  # look at r scores of components
+	if FlagVEOG:
+		ica.plot_scores(Veog_scores, exclude=Veog_inds)  # look at r scores of components
 	plt.show()
 	if len(fig_directory)>0:
 		fnamesavefigIcaScoreVEOG = fig_directory + raw_f + "-icascoreVeog.jpg"
 		plt.savefig(fnamesavefigIcaScoreVEOG)
 	
-	
-	ica.plot_scores(Heog_scores, exclude=Heog_inds)  # look at r scores of components
+	if FlagHEOG:
+		ica.plot_scores(Heog_scores, exclude=Heog_inds)  # look at r scores of components
 	
 	if len(fig_directory)>0:
 		fnamesavefigIcaScoreHEOG = fig_directory + raw_f + "-icascoreHeog.jpg"

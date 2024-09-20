@@ -819,3 +819,46 @@ def plot_phases_on_circle(phases):
 	ax.set_theta_direction(1)  # Sens des aiguilles d'une montre 
 	plt.title('Respiration phases synchronized with stimuli')
 	plt.show()
+	
+	
+	
+	
+def supprimer_artefacts_par_projection(signal, artefacts):
+    """
+    Supprime les artefacts d'un signal en projetant le signal sur le complément orthogonal
+    de l'espace engendré par les artefacts.
+
+    :param signal: Signal original, un tableau numpy 1D.
+    :param artefacts: Matrice où chaque colonne représente un artefact (signaux parasites).
+                      Les artefacts doivent avoir la même longueur que le signal.
+    :return: Le signal filtré après suppression des artefacts.
+    """
+    
+    # Assurer que les artefacts sont bien des vecteurs colonnes
+    if artefacts.ndim == 1:
+        artefacts = artefacts[:, np.newaxis]
+    
+    # Calculer la projection des artefacts sur le signal
+    # Artefacts doivent être dans un espace de base orthogonale
+    U, _, _ = np.linalg.svd(artefacts, full_matrices=False)
+    
+    # Projection du signal sur l'orthogonal des artefacts
+    projection = signal - U @ (U.T @ signal)
+    
+    return projection
+
+
+
+def sauvegarder_dictionnaires(dictionnaire, nom_fichier):
+    """
+    Sauvegarde un dictionnaire de dictionnaires contenant des listes dans un fichier JSON.
+
+    :param dictionnaire: Le dictionnaire de dictionnaires à sauvegarder
+    :param nom_fichier: Le nom du fichier dans lequel sauvegarder les données au format JSON
+    """
+    try:
+        with open(nom_fichier, 'w', encoding='utf-8') as fichier:
+            json.dump(dictionnaire, fichier, ensure_ascii=False, indent=4)
+        print(f"Les données ont été sauvegardées dans le fichier {nom_fichier}.")
+    except IOError as e:
+        print(f"Erreur lors de la sauvegarde des données : {e}")

@@ -5,6 +5,7 @@ Created on Fri Jan 13 09:26:16 2023
 @author: manum
 """
 import numpy as np
+import scipy
 from scipy.signal import fftconvolve
 import scipy.signal as signal
 from scipy.signal import hilbert
@@ -862,3 +863,123 @@ def sauvegarder_dictionnaires(dictionnaire, nom_fichier):
         print(f"Les données ont été sauvegardées dans le fichier {nom_fichier}.")
     except IOError as e:
         print(f"Erreur lors de la sauvegarde des données : {e}")
+		
+		
+def lire_fichier_mat(nom_fichier):
+    """
+    Lit un fichier MATLAB .mat et retourne son contenu sous forme de dictionnaire.
+
+    :param nom_fichier: Le chemin vers le fichier .mat
+    :return: Un dictionnaire contenant les données du fichier .mat
+    """
+    try:
+        # Lecture du fichier .mat
+        contenu_mat = scipy.io.loadmat(nom_fichier)
+        
+        # On supprime les métadonnées spécifiques à MATLAB (comme '__header__', '__version__', etc.)
+        contenu_filtre = {cle: valeur for cle, valeur in contenu_mat.items() if not cle.startswith('__')}
+        
+        return contenu_filtre
+    except FileNotFoundError as e:
+        print(f"Fichier non trouvé : {e}")
+    except Exception as e:
+        print(f"Erreur lors de la lecture du fichier : {e}")
+		
+		
+		
+		
+def lire_json(fichier_json):
+    """
+    Lit un fichier JSON et retourne son contenu sous forme de dictionnaire.
+
+    :param fichier_json: Le chemin vers le fichier JSON
+    :return: Un dictionnaire représentant le contenu du fichier JSON
+    """
+    try:
+        with open(fichier_json, 'r', encoding='utf-8') as fichier:
+            dictionnaire = json.load(fichier)
+        return dictionnaire
+    except FileNotFoundError:
+        print(f"Erreur : Le fichier {fichier_json} n'a pas été trouvé.")
+    except json.JSONDecodeError as e:
+        print(f"Erreur de décodage JSON : {e}")
+    except Exception as e:
+        print(f"Une erreur est survenue : {e}")
+		
+		
+		
+def gaussian(x, sx, y=None, sy=None):
+	
+	"""Returns an array of numpy arrays (a matrix) containing values between
+	1 and 0 in a 2D Gaussian distribution
+	
+	arguments
+	x		-- width in pixels
+	sx		-- width standard deviation
+	
+	keyword argments
+	y		-- height in pixels (default = x)
+	sy		-- height standard deviation (default = sx)
+	"""
+	
+	# square Gaussian if only x values are passed
+	if y == None:
+		y = x
+	if sy == None:
+		sy = sx
+	# centers	
+	xo = x/2
+	yo = y/2
+	# matrix of zeros
+	M = np.zeros([y,x],dtype=float)
+	# gaussian matrix
+	for i in range(x):
+		for j in range(y):
+			M[j,i] = np.exp(-1.0 * (((float(i)-xo)**2/(2*sx*sx)) + ((float(j)-yo)**2/(2*sy*sy)) ) )
+
+	return M
+
+
+def SetValue_From_other_key(dictionnaire, cle_de_recherche, valeur_recherchee, cle_a_retourner):
+	"""
+	Recherche dans un dictionnaire un élément correspondant à une valeur spécifique d'une clé
+	et retourne la valeur associée à une autre clé dans cet élément.
+	:param dictionnaire: Le dictionnaire contenant les données
+	:param cle_de_recherche: La clé où effectuer la recherche
+	:param valeur_recherchee: La valeur que nous recherchons dans la clé de recherche
+	:param cle_a_retourner: La clé dont on veut obtenir la valeur lorsque la correspondance est trouvée
+	:return: La valeur associée à 'cle_a_retourner' ou None si aucune correspondance n'est trouvée
+	"""
+	ix=0
+	ItemFound = -1
+	for item in dictionnaire[cle_de_recherche]:
+		if item == valeur_recherchee:
+			ItemFound = ix
+		ix = ix + 1
+	if (ItemFound >=0):
+		return dictionnaire[cle_a_retourner][ItemFound]
+	else:
+		return None
+
+
+def correlation_lignes_matrice_vecteur(matrice, vecteur):
+    """
+    Calcule la corrélation de chaque ligne d'une matrice avec un vecteur.
+
+    :param matrice: Une matrice (numpy array) où chaque ligne est un ensemble de données.
+    :param vecteur: Un vecteur (numpy array) avec lequel on veut calculer la corrélation.
+    :return: Un tableau contenant les coefficients de corrélation entre chaque ligne de la matrice et le vecteur.
+    """
+    # S'assurer que le vecteur est de la bonne taille
+    if matrice.shape[1] != len(vecteur):
+        raise ValueError("Le vecteur doit avoir la même longueur que le nombre de colonnes de la matrice")
+    
+    correlations = []
+    
+    # Parcourir chaque ligne de la matrice et calculer la corrélation avec le vecteur
+    for ligne in matrice:
+        coeff_corr = np.corrcoef(ligne, vecteur)[0, 1]  # Corrélation entre la ligne et le vecteur
+        correlations.append(coeff_corr)
+    
+    return np.array(correlations)								
+	

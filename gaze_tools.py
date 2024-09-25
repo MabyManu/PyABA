@@ -614,3 +614,135 @@ def PlotDetectSaccade(Kind_VisAtt,TabAttSide,NbBlocks,ListGaze_LEye_X,ListGaze_L
 		NbSaccades_REye[i_block] = nbsacc_RE
 	
 	return NbSaccades_LEye,NbSaccades_REye
+
+
+def parse_fixations(fixations):
+	
+	"""Returns all relevant data from a list of fixation ending events
+	
+	arguments
+	
+	fixations		-	a list of fixation ending events from a single trial,
+					as produced by edfreader.read_edf, e.g.
+					edfdata[trialnr]['events']['Efix']
+
+	returns
+	
+	fix		-	a dict with three keys: 'x', 'y', and 'dur' (each contain
+				a numpy array) for the x and y coordinates and duration of
+				each fixation
+	"""
+	
+	# empty arrays to contain fixation coordinates
+	fix = {	'x':np.zeros(len(fixations)),
+			'y':np.zeros(len(fixations)),
+			'dur':np.zeros(len(fixations))}
+	# get all fixation coordinates
+	for fixnr in range(len( fixations)):
+		stime, etime, dur, ex, ey = fixations[fixnr]
+		fix['x'][fixnr] = ex
+		fix['y'][fixnr] = ey
+		fix['dur'][fixnr] = dur
+	
+	return fix
+
+
+
+def compute_heatmap(fixations, dispsize, imagefile=None, durationweight=True, alpha=0.5, savefilename=None, ax = None):
+	
+	"""Draws a heatmap of the provided fixations, optionally drawn over an
+	image, and optionally allocating more weight to fixations with a higher
+	duration.
+	
+	arguments
+	
+	fixations		-	a list of fixation ending events from a single trial,
+					as produced by edfreader.read_edf, e.g.
+					edfdata[trialnr]['events']['Efix']
+	dispsize		-	tuple or list indicating the size of the display,
+					e.g. (1024,768)
+	
+	keyword arguments
+	
+	imagefile		-	full path to an image file over which the heatmap
+					is to be laid, or None for no image; NOTE: the image
+					may be smaller than the display size, the function
+					assumes that the image was presented at the centre of
+					the display (default = None)
+	durationweight	-	Boolean indicating whether the fixation duration is
+					to be taken into account as a weight for the heatmap
+					intensity; longer duration = hotter (default = True)
+	alpha		-	float between 0 and 1, indicating the transparancy of
+					the heatmap, where 0 is completely transparant and 1
+					is completely untransparant (default = 0.5)
+	savefilename	-	full path to the file in which the heatmap should be
+					saved, or None to not save the file (default = None)
+	
+	returns
+	
+	fig			-	a matplotlib.pyplot Figure instance, containing the
+					heatmap
+	"""
+
+	# FIXATIONS
+	fix = parse_fixations(fixations)
+
+	
+	# HEATMAP
+	# Gaussian
+	gwh = 200
+	gsdwh = int(gwh/6)
+	gaus = py_tools.gaussian(gwh,gsdwh)
+	# matrix of zeroes
+	strt = int(gwh/2)
+	heatmapsize = int(dispsize[1] + 2*strt), int(dispsize[0] + 2*strt)
+	heatmap = np.zeros(heatmapsize, dtype=float)
+	# create heatmap
+	for i in range(0,len(fix['dur'])):
+		# get x and y coordinates
+		#x and y - indexes of heatmap array. must be integers
+		if (np.isnan(fix['x'][i])):
+			x=np.NaN
+		else:
+			x = strt + int(fix['x'][i]) - int(gwh/2)
+            
+		if (np.isnan(fix['y'][i])):
+ 			y=np.NaN
+		else:
+ 			y = strt + int(fix['y'][i]) - int(gwh/2)
+             
+		# correct Gaussian size if either coordinate falls outside of
+		# display boundaries
+		if (not 0 < x < dispsize[0]) or (not 0 < y < dispsize[1]):
+			hadj=[0,gwh];vadj=[0,gwh]
+			if 0 > x:
+				hadj[0] = abs(x)
+				x = 0
+			elif dispsize[0] < x:
+				hadj[1] = gwh - int(x-dispsize[0])
+			if 0 > y:
+				vadj[0] = abs(y)
+				y = 0
+			elif dispsize[1] < y:
+				vadj[1] = gwh - int(y-dispsize[1])
+			# add adjusted Gaussian to the current heatmap
+			try:
+				heatmap[y:y+vadj[1],x:x+hadj[1]] += gaus[vadj[0]:vadj[1],hadj[0]:hadj[1]] * fix['dur'][i]
+			except:
+				# fixation was probably outside of display
+				pass
+		else:				
+			# add Gaussian to the current heatmap
+			heatmap[y:y+gwh,x:x+gwh] += gaus * fix['dur'][i]
+	# resize heatmap
+	heatmap = heatmap[strt:dispsize[1]+strt,strt:dispsize[0]+strt]
+	# remove zeros
+	lowbound = np.nanmean(heatmap[heatmap>0])
+	heatmap[heatmap<lowbound] = np.NaN 
+	
+	return heatmap
+
+
+
+
+

@@ -260,40 +260,32 @@ def SpatTemp_TFCE_plotCompare(X, colors_config, styles_config,evokeds,p_accept,n
 	
 	
 	samplingFreq = evokeds[list(evokeds.keys())[0]].info['sfreq']
+	Times = evokeds[list(evokeds.keys())[0]].times
 	adjacency, ch_names = find_ch_adjacency(evokeds[list(evokeds.keys())[0]].info, ch_type='eeg')
 
 	
-	tfce = dict(start=1, step=2)
+	tfce = dict(start=0, step=0.2)
 	
 	# Calculate statistical thresholds
-	t_obs, clusters, cluster_pv, h0 = spatio_temporal_cluster_test(X, tfce, adjacency=adjacency,n_permutations=1000)  # a more standard number would be 1000+
+	t_obs, clusters, cluster_pv, h0 = spatio_temporal_cluster_test(X, tfce, adjacency=adjacency,n_permutations=n_permutations)  # a more standard number would be 1000+
 	significant_points = cluster_pv.reshape(t_obs.shape).T <= p_accept
 	print(str(significant_points.sum()) + " points selected by TFCE ...")
     
-	figtopocompare = plot_compare_evokeds(evokeds, picks='eeg', colors=colors_config,styles = styles_config,axes='topo',split_legend=False,legend="lower center")
+	figtopocompare = plot_compare_evokeds(evokeds, picks='eeg', colors=colors_config,styles = styles_config,axes='topo',invert_y=True,split_legend=False,legend="lower center")
 	Nchans = t_obs.shape[1]
-	
+
 	for i_chan in range (Nchans):
 		SignifiWin_curr = significant_points[i_chan,:]
-		SampSign =np.where(SignifiWin_curr)[0]
-		BoundWin_ix = np.where((np.diff(SampSign)>1))[0]
+		ClustersSign = py_tools.find_clusters(np.int32(np.squeeze(SignifiWin_curr)))
+		Nb_Clust = len(ClustersSign)
 		
-		if (len(BoundWin_ix)>0):
-			Nb_Clust = len(BoundWin_ix)+1
-			Clust_start = np.zeros(Nb_Clust,dtype='int64')
-			Clust_stop = np.zeros(Nb_Clust,dtype='int64')
+		if Nb_Clust > 0:
 			for i_clustwin in range(Nb_Clust):
-				if (i_clustwin==0):
-					Clust_start[i_clustwin] = SampSign[0]
-				else:
-					Clust_start[i_clustwin] = SampSign[BoundWin_ix[i_clustwin-1]+1]
+				figtopocompare[0].get_axes()[i_chan].axvspan(Times[ClustersSign[i_clustwin][0]],Times[ClustersSign[i_clustwin][1]],facecolor="crimson",alpha=0.3)
 				
-				if (i_clustwin==(Nb_Clust-1)):
-					Clust_stop[i_clustwin] = SampSign[-1]
-				else:
-					Clust_stop[i_clustwin] = SampSign[BoundWin_ix[i_clustwin]]
-				figtopocompare[0].get_axes()[i_chan].axvspan(Clust_start[i_clustwin]/samplingFreq,Clust_stop[i_clustwin]/samplingFreq,facecolor="crimson",alpha=0.3)
-# 	figtopocompare[0].set_size_inches(8, 8)
+				
+				
+				
 	return figtopocompare
     
     # Emergence_clust_bool = np.zeros((evokeds.times.size,evokeds.info['nchan']),dtype='bool')

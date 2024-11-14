@@ -25,6 +25,7 @@ import mne_tools
 import os
 import json
 import matplotlib.pyplot as plt
+import h5py
 
 from PyQt5.QtWidgets import QFileDialog,QListView,QAbstractItemView,QTreeView
 
@@ -672,7 +673,7 @@ def bandpass_filter(data, lowcut, highcut, fs, order=2):
     low = lowcut / nyquist
     high = highcut / nyquist
     b, a = signal.butter(order, [low, high], btype='band')
-    y = signal.lfilter(b, a, data)
+    y = signal.filtfilt(b, a, data)
     return y
 
 
@@ -702,6 +703,30 @@ def highpass_filter(data, cutoff_freq, sample_rate, order=2):
     return filtered_data
 
 
+def lowpass_filter(data, cutoff_freq, sample_rate, order=2):
+    """
+    Applique un filtre passe-bas à un signal.
+
+    Parameters:
+    data (array-like): Le signal à filtrer.
+    cutoff_freq (float): La fréquence de coupure du filtre (en Hz).
+    sample_rate (float): La fréquence d'échantillonnage du signal (en Hz).
+    order (int): L'ordre du filtre. Plus l'ordre est élevé, plus le filtrage est précis. (par défaut 5)
+
+    Returns:
+    array-like: Le signal filtré.
+    """
+    nyquist = 0.5 * sample_rate  # Fréquence de Nyquist
+    normal_cutoff = cutoff_freq / nyquist  # Fréquence de coupure normalisée
+
+    # Conception du filtre passe-haut Butterworth
+    b, a = signal.butter(order, normal_cutoff, btype='low', analog=False)
+
+    # Application du filtre
+    filtered_data = signal.filtfilt(b, a, data)
+
+    return filtered_data
+
 
 
 def phase_atFreqTarget(signal,FreqTarget, fs, bandwidth=0.5):
@@ -711,6 +736,13 @@ def phase_atFreqTarget(signal,FreqTarget, fs, bandwidth=0.5):
 	return instantaneous_phase
 
 
+def calcul_enveloppe(signal,FreqTarget,fs,bandwidth=1.0):
+	# Appliquer la transformation de Hilbert pour obtenir le signal analytique
+	filtered_signal = bandpass_filter(signal, FreqTarget - bandwidth / 2, FreqTarget + bandwidth / 2, fs)
+	signal_analytique = hilbert(filtered_signal)
+	# Calculer l'enveloppe en prenant le module du signal analytique
+	enveloppe = np.abs(signal_analytique)
+	return enveloppe
 
 def phase_synchrony_index(signal,Deltaf,Freqmin,Freqmax, fs, bandwidth=1.0):
 	"""
@@ -983,3 +1015,377 @@ def correlation_lignes_matrice_vecteur(matrice, vecteur):
     
     return np.array(correlations)								
 	
+
+def enregistrer_dictionnaire_hdf5(dictionnaire,fichier_hdf5):
+    """
+    Enregistre un dictionnaire dans un fichier HDF5, prenant en charge
+    divers types de données, y compris des listes de tableaux numpy et des chaînes.
+    """
+    def ajouter_element(fichier, groupe, cle, valeur):
+        """
+        Ajoute un élément au fichier HDF5, en gérant différents types de données.
+        """
+        if isinstance(valeur, dict):
+            # Si la valeur est un dictionnaire, créer un sous-groupe et ajouter récursivement les éléments
+            sous_groupe = groupe.create_group(cle)
+            for sous_cle, sous_valeur in valeur.items():
+                ajouter_element(fichier, sous_groupe, sous_cle, sous_valeur)
+        elif isinstance(valeur, list):
+            # Si la valeur est une liste, il faut vérifier les éléments
+            if all(isinstance(x, np.ndarray) for x in valeur):
+                # Si la liste contient des numpy arrays, créer un dataset pour chaque tableau
+                for i, array in enumerate(valeur):
+                    dataset_name = f"{cle}_{i}"
+                    groupe.create_dataset(dataset_name, data=array)
+            elif all(isinstance(x, str) for x in valeur):
+                # Si la liste contient des chaînes de caractères, les convertir en vlen strings
+                valeur_numpy = np.array(valeur, dtype=h5py.special_dtype(vlen=str))
+                groupe.create_dataset(cle, data=valeur_numpy)
+            else:
+                # Sinon, convertir en tableau numpy et enregistrer
+                valeur_numpy = np.array(valeur)
+                groupe.create_dataset(cle, data=valeur_numpy)
+        elif isinstance(valeur, np.ndarray):
+            # Si c'est un numpy array, on peut le stocker directement
+            groupe.create_dataset(cle, data=valeur)
+        elif isinstance(valeur, str):
+            # Si c'est une chaîne de caractères, utiliser vlen string
+            groupe.create_dataset(cle, data=np.array(valeur, dtype=h5py.special_dtype(vlen=str)))
+        else:
+            # Pour les autres types simples comme les scalaires (entiers, flottants, etc.)
+            groupe.create_dataset(cle, data=valeur)
+
+    # Ouvrir le fichier HDF5 en mode écriture
+    with h5py.File(fichier_hdf5, 'w') as fichier:
+        # Pour chaque clé/valeur dans le dictionnaire, ajouter l'élément au fichier
+        for cle, valeur in dictionnaire.items():
+            ajouter_element(fichier, fichier, cle, valeur)
+
+				
+				
+				
+def hdf5_to_dict(hdf5_file):
+    def recursively_convert_to_dict(h5_group):
+        """Convertit un groupe ou un dataset HDF5 en dictionnaire."""
+        result = {}
+        for key, item in h5_group.items():
+            if isinstance(item, h5py.Group):
+                # Si c'est un groupe, on appelle récursivement la fonction
+                result[key] = recursively_convert_to_dict(item)
+            elif isinstance(item, h5py.Dataset):
+                # Si c'est un dataset, on récupère les données
+                result[key] = item[()]  # item[()] retourne les données sous forme de tableau numpy
+            else:
+                raise TypeError(f"Type non supporté pour l'élément : {key}")
+        return result
+
+    # Ouvrir le fichier HDF5
+    with h5py.File(hdf5_file, 'r') as h5_file:
+        return recursively_convert_to_dict(h5_file)
+	
+	
+	
+def find_clusters(arr):
+	if (len(arr)==0):  # Si le tableau est vide
+		return []
+	clusters = []
+	start_idx = 0
+	
+	for i in range(1, len(arr)):
+		if arr[i] != arr[i-1]:  # Fin d'un cluster
+			if(np.prod(arr[start_idx:i-1])>0):
+				clusters.append((start_idx, i-1))
+			start_idx = i  # Début d'un nouveau cluster
+	
+	# Ajouter le dernier cluster
+	if(np.prod(arr[start_idx:len(arr) - 1])>0):
+		clusters.append((start_idx, len(arr) - 1))
+	return clusters
+
+
+
+def permutation_test_emergence(signal, n_permutations=10000, seed=None):
+    """
+    Effectue un test par permutation pour vérifier si la moyenne du signal est significativement différente de zéro.
+    
+    Parameters:
+        signal (array-like): Le signal à tester (tableau de valeurs).
+        n_permutations (int): Nombre de permutations aléatoires (par défaut 10000).
+        seed (int): Valeur pour initialiser le générateur aléatoire (optionnel).
+        
+    Returns:
+        p_value (float): La p-valeur du test.
+        observed_mean (float): La moyenne observée du signal.
+        perm_means (np.array): Moyennes des permutations pour vérifier la distribution.
+    """
+    if seed is not None:
+        np.random.seed(seed)
+
+    # Moyenne observée du signal
+    observed_mean = np.mean(signal)
+    
+    # Moyennes pour chaque permutation
+    perm_means = np.zeros(n_permutations)
+    
+    for i in range(n_permutations):
+        # Inversion aléatoire des signes du signal
+        permuted_signal = signal * np.random.choice([-1, 1], size=len(signal))
+        perm_means[i] = np.mean(permuted_signal)
+    
+    # Calcul de la p-valeur
+    p_value = (np.sum(np.abs(perm_means) >= np.abs(observed_mean)) + 1) / (n_permutations + 1)
+    
+    return p_value, observed_mean, perm_means
+
+
+
+
+
+def permutation_test_2sig(signal1, signal2, num_permutations=10000):
+    """
+    Effectue un test statistique par permutation pour comparer deux signaux.
+
+    Parameters:
+    - signal1: array-like, premier signal
+    - signal2: array-like, second signal
+    - num_permutations: int, nombre de permutations à réaliser (par défaut: 10 000)
+
+    Returns:
+    - p_value: float, valeur p estimée
+    """
+    # Calcul de la différence de moyennes entre les deux signaux
+    observed_diff = np.mean(signal1) - np.mean(signal2)
+    
+    # Concatenate les deux signaux pour effectuer des permutations
+    combined = np.concatenate([signal1, signal2])
+    n1 = len(signal1)
+    
+    # Liste pour stocker les différences moyennes permutées
+    perm_diffs = []
+    
+    for _ in range(num_permutations):
+        # Permutation des valeurs
+        np.random.shuffle(combined)
+        # Calcul de la différence de moyennes pour cette permutation
+        perm_diff = np.mean(combined[:n1]) - np.mean(combined[n1:])
+        perm_diffs.append(perm_diff)
+    
+    # Calcul de la p-valeur en fonction de la différence observée
+    perm_diffs = np.array(perm_diffs)
+    p_value = np.mean(np.abs(perm_diffs) >= np.abs(observed_diff))
+    
+    return p_value
+
+
+def correlation_significance_bootstrap(signal, reference_signal, n_iterations=1000, alpha=0.05):
+	"""
+	Calcule la probabilité de significativité d'une corrélation entre un signal et un signal de référence
+	en utilisant le bootstrap.
+	
+	Parameters:
+	- signal : array-like, signal dont on veut tester la corrélation
+	- reference_signal : array-like, signal de référence
+	- n_iterations : int, nombre d'itérations de bootstrap (par défaut 1000)
+	- alpha : float, niveau de signification pour le test de significativité (par défaut 0.05)
+	
+	Returns:
+	- p_value : float, la p-value associée à la corrélation observée
+	- correlation_observed : float, corrélation entre signal et reference_signal
+	- threshold : tuple (float, float), bornes de l'intervalle de confiance (1-alpha) pour la corrélation
+	"""
+	
+	# Calcul de la corrélation initiale entre les deux signaux
+	correlation_observed = np.corrcoef(signal, reference_signal)[0, 1]
+	
+	# Liste pour stocker les corrélations bootstrap
+	bootstrap_correlations = []
+	
+	# Bootstrap : échantillonnage avec remplacement et calcul de corrélation
+	for _ in range(n_iterations):
+		# Création d'un échantillon bootstrap
+		n = len(signal)
+		indices = np.random.choice(n, n, replace=True)
+		sample_signal = signal[indices]
+		indices = np.random.choice(n, n, replace=True)
+		sample_reference_signal = reference_signal[indices]
+		
+		# Calcul de la corrélation pour cet échantillon
+		bootstrap_correlation = np.corrcoef(sample_signal, sample_reference_signal)[0, 1]
+		bootstrap_correlations.append(bootstrap_correlation)
+	
+	# Conversion en array pour la manipulation
+	bootstrap_correlations = np.array(bootstrap_correlations)
+	
+	# Calcul de la p-value pour la significativité de la corrélation observée
+	p_value = np.sum(bootstrap_correlations >= correlation_observed) / n_iterations
+	
+	# Calcul de l'intervalle de confiance
+	lower_bound = np.percentile(bootstrap_correlations, alpha/2 * 100)
+	upper_bound = np.percentile(bootstrap_correlations, (1 - alpha/2) * 100)
+	threshold = (lower_bound, upper_bound)
+	return p_value, correlation_observed, threshold
+
+
+
+def normalized_euclidean_distance_significance(signal, reference_signal, n_iterations=1000, alpha=0.05):
+    """
+    Calcule la distance euclidienne normalisée entre un signal et un signal de référence
+    et évalue la significativité de cette distance via bootstrap.
+    
+    Parameters:
+    - signal : array-like, le signal à évaluer
+    - reference_signal : array-like, le signal de référence
+    - n_iterations : int, nombre d'itérations de bootstrap (par défaut 1000)
+    - alpha : float, niveau de significativité (par défaut 0.05)
+    
+    Returns:
+    - p_value : float, la p-value associée à la distance observée
+    - distance_observed : float, la distance euclidienne normalisée entre le signal et le signal de référence
+    - threshold : tuple (float, float), les bornes de l'intervalle de confiance (1-alpha) pour la distance
+    """
+    
+    # Calcul de la distance euclidienne normalisée entre les deux signaux
+    distance_observed = np.linalg.norm(signal - reference_signal) / len(signal)
+    
+    # Liste pour stocker les distances bootstrap
+    bootstrap_distances = []
+    
+    # Bootstrap : échantillonnage avec remplacement et calcul de la distance
+    for _ in range(n_iterations):
+        # Création d'un échantillon bootstrap
+        indices = np.random.randint(0, len(signal), len(signal))
+        sample_signal = signal[indices]
+        sample_reference_signal = reference_signal[indices]
+        
+        # Calcul de la distance pour cet échantillon
+        bootstrap_distance = np.linalg.norm(sample_signal - sample_reference_signal) / len(signal)
+        bootstrap_distances.append(bootstrap_distance)
+    
+    # Conversion en array pour la manipulation
+    bootstrap_distances = np.array(bootstrap_distances)
+    
+    # Calcul de la p-value pour la significativité de la distance observée
+    p_value = np.sum(bootstrap_distances <= distance_observed) / n_iterations
+    
+    # Calcul de l'intervalle de confiance
+    lower_bound = np.percentile(bootstrap_distances, alpha/2 * 100)
+    upper_bound = np.percentile(bootstrap_distances, (1 - alpha/2) * 100)
+    threshold = (lower_bound, upper_bound)
+    
+    return p_value, distance_observed, threshold
+
+
+
+def bootstrap_statistical_comparison(signal, reference_signal, n_iterations=1000, alpha=0.05, statistic='mean'):
+    """
+    Compare statistiquement un signal à un signal de référence en utilisant la méthode de bootstrap.
+    
+    Parameters:
+    - signal : array-like, le signal à comparer
+    - reference_signal : array-like, le signal de référence
+    - n_iterations : int, nombre d'itérations de bootstrap (par défaut 1000)
+    - alpha : float, niveau de significativité pour le test (par défaut 0.05)
+    - statistic : str, la statistique d'intérêt pour la comparaison ('mean' ou 'median')
+    
+    Returns:
+    - p_value : float, p-value associée à la statistique observée
+    - observed_stat : float, valeur de la statistique observée entre les deux signaux
+    - threshold : tuple (float, float), les bornes de l'intervalle de confiance (1-alpha) pour la statistique
+    """
+    
+    # Calcul de la statistique observée (différence de moyenne ou de médiane)
+    if statistic == 'mean':
+        observed_stat = np.mean(signal) - np.mean(reference_signal)
+    elif statistic == 'median':
+        observed_stat = np.median(signal) - np.median(reference_signal)
+    else:
+        raise ValueError("La statistique doit être 'mean' ou 'median'")
+    
+    # Liste pour stocker les statistiques bootstrap
+    bootstrap_stats = []
+    
+    # Bootstrap : échantillonnage avec remplacement et calcul de la statistique d'intérêt
+    for _ in range(n_iterations):
+        # Création d'un échantillon bootstrap pour chaque signal
+        sample_signal = np.random.choice(signal, size=len(signal), replace=True)
+        sample_reference_signal = np.random.choice(reference_signal, size=len(reference_signal), replace=True)
+        
+        # Calcul de la statistique pour cet échantillon
+        if statistic == 'mean':
+            bootstrap_stat = np.mean(sample_signal) - np.mean(sample_reference_signal)
+        elif statistic == 'median':
+            bootstrap_stat = np.median(sample_signal) - np.median(sample_reference_signal)
+        
+        bootstrap_stats.append(bootstrap_stat)
+    
+    # Conversion en array pour la manipulation
+    bootstrap_stats = np.array(bootstrap_stats)
+    
+    # Calcul de la p-value pour la statistique observée
+    p_value = np.sum(bootstrap_stats >= observed_stat) / n_iterations
+    
+    # Calcul de l'intervalle de confiance
+    lower_bound = np.percentile(bootstrap_stats, alpha/2 * 100)
+    upper_bound = np.percentile(bootstrap_stats, (1 - alpha/2) * 100)
+    threshold = (lower_bound, upper_bound)
+    
+    return p_value, observed_stat, threshold
+
+
+
+
+
+
+
+
+def bootstrap_test_signal_vs_zero(signal, n_iterations=1000, alpha=0.05):
+    """
+    Teste si la moyenne d'un signal est significativement différente de zéro
+    en utilisant la méthode de bootstrap.
+    
+    Parameters:
+    - signal : array-like, le signal à tester
+    - n_iterations : int, nombre d'itérations de bootstrap (par défaut 1000)
+    - alpha : float, niveau de signification pour le test (par défaut 0.05)
+    
+    Returns:
+    - p_value : float, la p-value associée à la différence de la moyenne du signal par rapport à zéro
+    - mean_observed : float, la moyenne observée du signal
+    - threshold : tuple (float, float), les bornes de l'intervalle de confiance (1-alpha) pour la moyenne du signal
+    """
+    
+    # Calcul de la moyenne observée du signal
+    mean_observed = np.mean(signal)
+    
+    # Liste pour stocker les moyennes bootstrap
+    bootstrap_means = []
+    
+    # Bootstrap : échantillonnage avec remplacement et calcul de la moyenne
+    for _ in range(n_iterations):
+        # Création d'un échantillon bootstrap
+        sample_signal = np.random.choice(signal, size=len(signal), replace=True)
+        
+        # Calcul de la moyenne pour cet échantillon
+        bootstrap_mean = np.mean(sample_signal)
+        bootstrap_means.append(bootstrap_mean)
+    
+    # Conversion en array pour la manipulation
+    bootstrap_means = np.array(bootstrap_means)
+    
+    # Calcul de la p-value pour la significativité de la moyenne observée
+    # (on considère la proportion des moyennes bootstrap qui sont au moins aussi extrêmes que mean_observed)
+    if mean_observed > 0:
+        p_value = np.sum(bootstrap_means >= mean_observed) / n_iterations
+    else:
+        p_value = np.sum(bootstrap_means <= mean_observed) / n_iterations
+    
+    # Calcul de l'intervalle de confiance pour la moyenne
+    lower_bound = np.percentile(bootstrap_means, alpha/2 * 100)
+    upper_bound = np.percentile(bootstrap_means, (1 - alpha/2) * 100)
+    threshold = (lower_bound, upper_bound)
+    
+    return p_value, mean_observed, threshold
+
+
+
+
